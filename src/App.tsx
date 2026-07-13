@@ -1,0 +1,723 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { PetFace } from './components/PetFace';
+import { PaperTemplate } from './components/PaperTemplate';
+import { pcmToBase64, base64ToPcm } from './lib/audio';
+
+declare const FaceMesh: any;
+
+interface LogEntry {
+  time: string;
+  message: string;
+  type: 'info' | 'success' | 'warn' | 'error';
+}
+
+export default function App() {
+  const [isConnected, setIsConnected] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isDistracted, setIsDistracted] = useState(false);
+  const [lookOffset, setLookOffset] = useState({ x: 0, y: 0 });
+  const [error, setError] = useState<string | null>(null);
+  const [appState, setAppState] = useState<'idle' | 'calibrating' | 'running'>('idle');
+  const [showTemplate, setShowTemplate] = useState(false);
+  const [trackerMode, setTrackerMode] = useState<'mediapipe' | 'fallback'>('mediapipe');
+  const [showMonitor, setShowMonitor] = useState(true);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [micVolume, setMicVolume] = useState(0);
+  const [isAsleep, setIsAsleep] = useState(false);
+  const lastActiveRef = useRef<number>(Date.now());
+  const isAsleepRef = useRef(false);
+  const isSpeakingRef = useRef(false);
+
+  // OLED Screen Config States
+  const [oledTheme, setOledTheme] = useState<'split' | 'cyan' | 'amber' | 'green' | 'white'>('split');
+  const [pixelGrid, setPixelGrid] = useState(true);
+  const [glassShine, setGlassShine] = useState(true);
+  const [showPCB, setShowPCB] = useState(true);
+  const [brightness, setBrightness] = useState(100);
+  const [screenFlicker, setScreenFlicker] = useState(true);
+
+  const [expression, setExpression] = useState({
+    leftEyeOpen: 1.0,
+    rightEyeOpen: 1.0,
+    leftBrowRaise: 0.0,
+    rightBrowRaise: 0.0,
+    mouthOpen: 0.0,
+  });
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const inputAudioCtxRef = useRef<AudioContext | null>(null);
+  const outputAudioCtxRef = useRef<AudioContext | null>(null);
+  const nextStartTimeRef = useRef<number>(0);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fallbackCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lastFaceUpdateRef = useRef<number>(0);
+  const prevFrameDataRef = useRef<Uint8ClampedArray | null>(null);
+
+  const addLog = (message: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
+    const time = new Date().toLocaleTimeString();
+    setLogs((prev) => [{ time, message, type }, ...prev.slice(0, 49)]);
+  };
+
+  // Function to start the app (requires user gesture for AudioContext)
+  const startApp = async () => {
+    try {
+      setAppState('calibrating');
+      setError(null);
+      addLog("Awakening the Paper Pet...", "info");
+      addLog("Entering calibration phase (3s). Please place device in stand...", "warn");
+
+      // 2. Setup Audio Contexts
+      addLog("Initializing audio systems (16kHz PCM duplex)...", "info");
+      const inputAudioCtx = new AudioContext({ sampleRate: 16000 });
+      const outputAudioCtx = new AudioContext({ sampleRate: 24000 });
+      inputAudioCtxRef.current = inputAudioCtx;
+      outputAudioCtxRef.current = outputAudioCtx;
+
+      // 3. Get Media Stream (Audio + Video)
+      addLog("Requesting front-facing camera & microphone access...", "info");
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: true, 
+        video: { facingMode: "user" } 
+      });
+      addLog("Media stream acquired successfully.", "success");
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        
+        videoRef.current.onloadedmetadata = () => {
+           videoRef.current?.play();
+           addLog("Camera playback active.", "success");
+           
+           // Initialize FaceMesh or Fallback
+           initTracker();
+        };
+      }
+
+      // Mic Volume tracking
+      const analyzer = inputAudioCtx.createAnalyser();
+      analyzer.fftSize = 256;
+      const bufferLength = analyzer.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      
+      const checkVolume = () => {
+         if (inputAudioCtxRef.current && inputAudioCtxRef.current.state === 'running') {
+            analyzer.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+              sum += dataArray[i];
+            }
+            const avg = sum / bufferLength;
+            // Normalize volume roughly between 0.0 and 1.0
+            const vol = Math.min(1, avg / 48); 
+            setMicVolume(vol);
+
+            if (vol > 0.15 || isSpeakingRef.current) {
+              lastActiveRef.current = Date.now();
+              if (isAsleepRef.current) {
+                setIsAsleep(false);
+                isAsleepRef.current = false;
+              }
+            }
+
+            // Check for inactivity (15 seconds)
+            if (Date.now() - lastActiveRef.current > 15000 && !isAsleepRef.current && !isSpeakingRef.current) {
+              setIsAsleep(true);
+              isAsleepRef.current = true;
+            }
+         }
+         requestAnimationFrame(checkVolume);
+      };
+      checkVolume();
+
+      // Setup audio processing
+      const source = inputAudioCtx.createMediaStreamSource(stream);
+      source.connect(analyzer); // Connect source to analyzer
+
+      const processor = inputAudioCtx.createScriptProcessor(4096, 1, 1);
+      source.connect(processor);
+      processor.connect(inputAudioCtx.destination);
+
+      let videoInterval: any;
+
+      // Delay connecting WebSocket for 3 seconds (Calibration Phase)
+      setTimeout(() => {
+          setAppState('running');
+
+          // 1. Connect WebSocket
+          addLog("Connecting to Gemini Live API via custom gateway...", "info");
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const wsUrl = `${protocol}//${window.location.host}/live`;
+          const ws = new WebSocket(wsUrl);
+          wsRef.current = ws;
+
+          processor.onaudioprocess = (e) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              const base64 = pcmToBase64(e.inputBuffer.getChannelData(0));
+              ws.send(JSON.stringify({ audio: base64 }));
+            }
+          };
+
+          // 5. Setup WebSocket Handlers
+          ws.onopen = () => {
+            setIsConnected(true);
+            addLog("Connected to Gemini Live Agent soul.", "success");
+          };
+
+          ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.connected) {
+               addLog("OLED Interface synced with Gemini.", "success");
+            }
+            if (msg.audio) {
+              setIsSpeaking(true);
+              isSpeakingRef.current = true;
+              lastActiveRef.current = Date.now();
+              if (isAsleepRef.current) {
+                setIsAsleep(false);
+                isAsleepRef.current = false;
+              }
+              playAudioChunk(outputAudioCtx, msg.audio);
+            }
+            if (msg.interrupted) {
+              nextStartTimeRef.current = 0; // Reset queue
+              setIsSpeaking(false);
+              isSpeakingRef.current = false;
+              addLog("User interrupted. Clearing speaking buffer.", "warn");
+            }
+          };
+
+          ws.onclose = () => {
+            setIsConnected(false);
+            setIsSpeaking(false);
+            isSpeakingRef.current = false;
+            addLog("WebSocket disconnected. Retrying in background...", "error");
+          };
+
+          // 6. Setup Video Framing (1 FPS for Gemini Vision)
+          videoInterval = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN && videoRef.current && canvasRef.current) {
+              const video = videoRef.current;
+              const canvas = canvasRef.current;
+              if (video.videoWidth > 0 && video.videoHeight > 0) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                  const dataUrl = canvas.toDataURL('image/jpeg', 0.5); // lower quality to save bandwidth
+                  const base64Data = dataUrl.split(',')[1];
+                  ws.send(JSON.stringify({ video: base64Data }));
+                }
+              }
+            }
+          }, 1000);
+
+      }, 3000);
+
+      return () => {
+        clearInterval(videoInterval);
+        processor.disconnect();
+        source.disconnect();
+        if (wsRef.current) wsRef.current.close();
+      };
+
+    } catch (err: any) {
+      addLog(`Start failed: ${err.message}`, "error");
+      setError(err.message || "Failed to start camera/mic or connect to server.");
+      setAppState('idle');
+    }
+  };
+
+  const initTracker = () => {
+    let hasLoadedMediaPipe = false;
+    try {
+      if (typeof FaceMesh !== 'undefined') {
+        addLog("Initializing MediaPipe FaceMesh engine...", "info");
+        const faceMeshInstance = new FaceMesh({
+          locateFile: (file: string) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+          }
+        });
+
+        faceMeshInstance.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5
+        });
+
+        faceMeshInstance.onResults((results: any) => {
+          const now = performance.now();
+          if (now - lastFaceUpdateRef.current < 80) return; // limit to ~12fps
+          lastFaceUpdateRef.current = now;
+
+          if (results && results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+              const face = results.multiFaceLandmarks[0];
+              const nose = face[4]; // nose tip
+              
+              // invert X because front camera is mirrored
+              const offsetX = (nose.x - 0.5) * 60; 
+              const offsetY = (nose.y - 0.5) * 30;
+              setLookOffset({ x: -offsetX, y: offsetY }); 
+              setIsDistracted(false);
+
+              // Eye openness / Blink tracking
+              const leftDist = Math.sqrt(Math.pow(face[159].x - face[145].x, 2) + Math.pow(face[159].y - face[145].y, 2));
+              const leftWidth = Math.sqrt(Math.pow(face[33].x - face[133].x, 2) + Math.pow(face[33].y - face[133].y, 2));
+              const leftRatio = leftWidth > 0 ? (leftDist / leftWidth) : 0.25;
+
+              const rightDist = Math.sqrt(Math.pow(face[386].x - face[374].x, 2) + Math.pow(face[386].y - face[374].y, 2));
+              const rightWidth = Math.sqrt(Math.pow(face[263].x - face[362].x, 2) + Math.pow(face[263].y - face[362].y, 2));
+              const rightRatio = rightWidth > 0 ? (rightDist / rightWidth) : 0.25;
+
+              // Normalize: ratio < 0.14 is closed (0.0), ratio > 0.3 is fully open (1.0)
+              const normLeft = Math.max(0, Math.min(1, (leftRatio - 0.14) / 0.16));
+              const normRight = Math.max(0, Math.min(1, (rightRatio - 0.14) / 0.16));
+
+              // Brows Raise tracking (centered above the eye pupils vertically)
+              const leftBrowDist = face[159].y - face[105].y;
+              const leftBrowRatio = leftWidth > 0 ? (leftBrowDist / leftWidth) : 0.85;
+
+              const rightBrowDist = face[386].y - face[334].y;
+              const rightBrowRatio = rightWidth > 0 ? (rightBrowDist / rightWidth) : 0.85;
+
+              // Normalize: ~0.5 (frown) -> -1.0, 0.85 (neutral) -> 0.0, 1.2+ (fully raised) -> 1.0
+              const normLeftBrow = Math.max(-1, Math.min(1, (leftBrowRatio - 0.85) / 0.35));
+              const normRightBrow = Math.max(-1, Math.min(1, (rightBrowRatio - 0.85) / 0.35));
+
+              // Mouth open tracking
+              const mouthWidth = Math.sqrt(Math.pow(face[61].x - face[291].x, 2) + Math.pow(face[61].y - face[291].y, 2));
+              const mouthDist = Math.sqrt(Math.pow(face[13].x - face[14].x, 2) + Math.pow(face[13].y - face[14].y, 2));
+              const mouthRatio = mouthWidth > 0 ? (mouthDist / mouthWidth) : 0.0;
+
+              // Normalize: < 0.08 is closed (0.0), > 0.45 is wide open (1.0)
+              const normMouth = Math.max(0, Math.min(1, (mouthRatio - 0.08) / 0.37));
+
+              setExpression({
+                leftEyeOpen: normLeft,
+                rightEyeOpen: normRight,
+                leftBrowRaise: normLeftBrow,
+                rightBrowRaise: normRightBrow,
+                mouthOpen: normMouth,
+              });
+          } else {
+              setLookOffset({ x: 0, y: 0 });
+              setIsDistracted(true);
+              setExpression({
+                leftEyeOpen: 1.0,
+                rightEyeOpen: 1.0,
+                leftBrowRaise: 0.0,
+                rightBrowRaise: 0.0,
+                mouthOpen: 0.0,
+              });
+          }
+        });
+
+        let isRunning = true;
+        const processFrame = async () => {
+          if (!isRunning) return;
+          if (trackerMode === 'mediapipe' && videoRef.current && videoRef.current.readyState >= 2) {
+            try {
+              await faceMeshInstance.send({ image: videoRef.current });
+            } catch (err) {
+              // Ignore frame-send warnings during transitions
+            }
+          }
+          requestAnimationFrame(processFrame);
+        };
+        
+        processFrame();
+        hasLoadedMediaPipe = true;
+        addLog("MediaPipe FaceMesh engine active and tracking.", "success");
+      }
+    } catch (e) {
+      console.warn("Failed to load MediaPipe FaceMesh, falling back to pixel tracker", e);
+    }
+
+    if (!hasLoadedMediaPipe) {
+      setTrackerMode('fallback');
+      addLog("MediaPipe unavailable in this environment. Launching Retro Motion Tracker fallback.", "warn");
+      startFallbackTracker();
+    }
+  };
+
+  const startFallbackTracker = () => {
+    let isRunning = true;
+    const runFallback = () => {
+      if (!isRunning || trackerMode !== 'fallback') return;
+
+      if (videoRef.current && fallbackCanvasRef.current && videoRef.current.readyState >= 2) {
+        const video = videoRef.current;
+        const canvas = fallbackCanvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const w = 40;
+          const h = 30;
+          canvas.width = w;
+          canvas.height = h;
+          ctx.drawImage(video, 0, 0, w, h);
+          const frame = ctx.getImageData(0, 0, w, h);
+          const data = frame.data;
+
+          if (prevFrameDataRef.current) {
+            const prev = prevFrameDataRef.current;
+            let totalDiff = 0;
+            let motionXSum = 0;
+            let motionYSum = 0;
+            let motionPixelsCount = 0;
+
+            for (let i = 0; i < data.length; i += 4) {
+              const rDiff = Math.abs(data[i] - prev[i]);
+              const gDiff = Math.abs(data[i+1] - prev[i+1]);
+              const bDiff = Math.abs(data[i+2] - prev[i+2]);
+              const diff = (rDiff + gDiff + bDiff) / 3;
+
+              if (diff > 25) { // Significant motion threshold
+                const pixelIndex = i / 4;
+                const px = pixelIndex % w;
+                const py = Math.floor(pixelIndex / w);
+                motionXSum += px;
+                motionYSum += py;
+                motionPixelsCount++;
+                totalDiff += diff;
+              }
+            }
+
+            const averageDiff = totalDiff / (w * h);
+            if (motionPixelsCount > 10) {
+              // Calculate centroid of motion
+              const avgX = motionXSum / motionPixelsCount;
+              const avgY = motionYSum / motionPixelsCount;
+
+              // Convert to offset
+              const targetX = ((avgX / w) - 0.5) * 60;
+              const targetY = ((avgY / h) - 0.5) * 30;
+
+              setLookOffset({ x: -targetX, y: targetY });
+              setIsDistracted(false);
+            } else if (averageDiff < 1) {
+              // Sleep if absolutely no movement for a while
+              setIsDistracted(true);
+            }
+          }
+          prevFrameDataRef.current = data;
+        }
+      }
+      setTimeout(runFallback, 100); // 10 fps is perfect for motion tracking
+    };
+    runFallback();
+  };
+
+  const playAudioChunk = (audioCtx: AudioContext, base64: string) => {
+    try {
+      const audioData = base64ToPcm(base64);
+      const buffer = audioCtx.createBuffer(1, audioData.length, audioCtx.sampleRate);
+      buffer.getChannelData(0).set(audioData);
+      
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(audioCtx.destination);
+      
+      const currentTime = audioCtx.currentTime;
+      if (nextStartTimeRef.current < currentTime) {
+          nextStartTimeRef.current = currentTime + 0.05; 
+      }
+      
+      source.start(nextStartTimeRef.current);
+      nextStartTimeRef.current += buffer.duration;
+
+      source.onended = () => {
+        if (audioCtx.currentTime >= nextStartTimeRef.current - 0.1) {
+            setIsSpeaking(false);
+            isSpeakingRef.current = false;
+        }
+      };
+    } catch (e) {
+      console.error("Audio playback error", e);
+    }
+  };
+
+  return (
+    <div className="w-screen h-screen bg-black text-[#00ffcc] font-mono overflow-hidden relative flex flex-col md:flex-row">
+      {showTemplate && <PaperTemplate onClose={() => setShowTemplate(false)} />}
+      
+      {/* Hidden elements for capturing */}
+      <video ref={videoRef} autoPlay playsInline muted className="hidden" />
+      <canvas ref={canvasRef} className="hidden" />
+      <canvas ref={fallbackCanvasRef} className="hidden" />
+
+      {appState === 'idle' ? (
+        <div className="flex-1 flex flex-col items-center justify-center space-y-6 px-4">
+           <h1 className="text-4xl tracking-wider uppercase font-bold text-center glow-text text-shadow">Antonio's Paper Pet</h1>
+           <p className="text-center max-w-md opacity-80 text-sm leading-relaxed">
+              An intelligent, multi-platform spatial companion. It uses your device camera to track your posture, and Gemini to awaken its soul.
+           </p>
+           <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mt-8 w-full max-w-md">
+             <button 
+               onClick={startApp}
+               className="flex-1 px-8 py-4 bg-[#00ffcc] text-black uppercase font-bold tracking-widest hover:bg-opacity-90 transition-all rounded-sm shadow-[0_0_20px_#00ffcc]"
+             >
+               Awaken Pet
+             </button>
+             <button 
+               onClick={() => setShowTemplate(true)}
+               className="flex-1 px-8 py-4 border-2 border-[#00ffcc] text-[#00ffcc] uppercase font-bold tracking-widest hover:bg-[#00ffcc] hover:text-black hover:shadow-[0_0_20px_#00ffcc] transition-all rounded-sm"
+             >
+               Paper Model
+             </button>
+           </div>
+           {error && <p className="text-red-500 text-sm mt-4 text-center max-w-md">{error}</p>}
+        </div>
+      ) : (
+        <>
+          {/* Main Pet Screen */}
+          <div className="flex-1 relative flex flex-col h-full bg-black">
+             {/* Connection Status Indicator */}
+             <div className="absolute top-6 left-6 flex items-center space-x-3 opacity-80 z-10">
+                <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-[#00ffcc] shadow-[0_0_10px_#00ffcc]' : appState === 'calibrating' ? 'bg-yellow-500 shadow-[0_0_10px_yellow]' : 'bg-red-500 shadow-[0_0_10px_red]'}`} />
+                <span className="text-xs tracking-widest uppercase font-bold">{isConnected ? 'System Online' : appState === 'calibrating' ? 'Calibrating...' : 'Connecting Soul...'}</span>
+             </div>
+
+             {/* Dynamic Mode Switcher */}
+             <div className="absolute top-6 right-6 flex items-center space-x-2 z-10">
+                <button 
+                  onClick={() => {
+                    const nextMode = trackerMode === 'mediapipe' ? 'fallback' : 'mediapipe';
+                    setTrackerMode(nextMode);
+                    addLog(`Manually switched to ${nextMode === 'mediapipe' ? 'MediaPipe AI' : 'Retro Motion'} tracker.`, 'info');
+                    if (nextMode === 'fallback') startFallbackTracker();
+                  }}
+                  className="px-3 py-1 text-[10px] uppercase border border-[#00ffcc]/30 hover:border-[#00ffcc] hover:bg-[#00ffcc]/10 transition-all rounded-sm text-[#00ffcc]"
+                >
+                  Sensor: {trackerMode === 'mediapipe' ? 'MediaPipe' : 'Motion'}
+                </button>
+             </div>
+
+             {/* The Pet Face */}
+             <div className="flex-1 flex items-center justify-center relative">
+                {appState === 'calibrating' && (
+                  <div className="absolute top-1/3 text-[#00ffcc] font-bold tracking-widest uppercase animate-pulse opacity-50 z-10">
+                    Calibration Phase... Place in Stand
+                  </div>
+                )}
+                <PetFace 
+                  isSpeaking={isSpeaking} 
+                  isDistracted={isDistracted} 
+                  lookOffset={lookOffset} 
+                  expression={expression} 
+                  micVolume={micVolume}
+                  isCalibrating={appState === 'calibrating'}
+                  isAsleep={isAsleep}
+                  onWake={() => {
+                    lastActiveRef.current = Date.now();
+                    if (isAsleepRef.current) {
+                      setIsAsleep(false);
+                      isAsleepRef.current = false;
+                    }
+                  }}
+                  oledTheme={oledTheme}
+                  pixelGrid={pixelGrid}
+                  glassShine={glassShine}
+                  showPCB={showPCB}
+                  brightness={brightness}
+                  screenFlicker={screenFlicker}
+                />
+             </div>
+             
+             {/* Dynamic Status bar */}
+             <div className="absolute bottom-6 left-6 right-6 flex justify-between items-center opacity-75 text-xs uppercase tracking-widest">
+                <span>[X: {lookOffset.x.toFixed(0)} | Y: {lookOffset.y.toFixed(0)}]</span>
+                <span>{isSpeaking ? '● Pet Speaking' : isDistracted ? '💤 Resting (No face)' : '⚡ Active watching'}</span>
+             </div>
+          </div>
+
+          {/* Right-side Control and Debug Deck */}
+          <div className="w-full md:w-80 border-t md:border-t-0 md:border-l border-[#00ffcc]/20 bg-zinc-950 p-6 flex flex-col h-1/3 md:h-full justify-between overflow-y-auto">
+             <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-sm font-bold tracking-widest uppercase text-[#00ffcc]">Control Deck</h3>
+                  <button 
+                    onClick={() => setShowMonitor(!showMonitor)}
+                    className="text-[10px] uppercase underline text-gray-400 hover:text-[#00ffcc]"
+                  >
+                    {showMonitor ? 'Hide Feed' : 'Show Feed'}
+                  </button>
+                </div>
+
+                {/* Simulated OLED viewport / Camera Monitor */}
+                {showMonitor && (
+                   <div className="relative aspect-video w-full bg-black border border-[#00ffcc]/20 rounded-sm overflow-hidden flex items-center justify-center">
+                      <div className="absolute inset-0 bg-[#00ffcc]/5 pointer-events-none z-10 scanline-effect" />
+                      <video 
+                        ref={(el) => {
+                          if (el && videoRef.current && el.srcObject !== videoRef.current.srcObject) {
+                            el.srcObject = videoRef.current.srcObject;
+                            el.play().catch(() => {});
+                          }
+                        }}
+                        autoPlay 
+                        playsInline 
+                        muted 
+                        className="w-full h-full object-cover opacity-50 grayscale contrast-150 scale-x-[-1]" 
+                      />
+                      <div className="absolute bottom-2 left-2 text-[10px] font-mono tracking-wider text-[#00ffcc] bg-black/80 px-2 py-0.5 rounded-sm">
+                         CAM FEED
+                      </div>
+                      
+                      {/* Laser scanning marker */}
+                      <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#00ffcc]/60 shadow-[0_0_8px_#00ffcc] animate-bounce" />
+                   </div>
+                )}
+
+                {/* Telemetry data */}
+                <div className="grid grid-cols-2 gap-4 text-[10px] border-t border-b border-[#00ffcc]/10 py-4">
+                   <div>
+                     <span className="block opacity-50">SOUl LINK:</span>
+                     <span className="font-bold text-white">{isConnected ? 'CONNECTED' : 'DISCONNECTED'}</span>
+                   </div>
+                   <div>
+                     <span className="block opacity-50">EYE SYNC:</span>
+                     <span className="font-bold text-white">{(lookOffset.x !== 0 || lookOffset.y !== 0) ? 'ACTIVE' : 'IDLE'}</span>
+                   </div>
+                   <div>
+                     <span className="block opacity-50">ENGINE:</span>
+                     <span className="font-bold text-white uppercase">{trackerMode}</span>
+                   </div>
+                   <div>
+                     <span className="block opacity-50">SLEEP MODE:</span>
+                     <span className="font-bold text-white">{isDistracted ? 'ON' : 'OFF'}</span>
+                   </div>
+                </div>
+
+                {/* OLED Hardware Customizer */}
+                <div className="space-y-4 pt-2">
+                  <h4 className="text-[10px] font-bold tracking-widest uppercase text-[#00ffcc]/80">OLED Screen Config</h4>
+                  
+                  {/* Color Preset Selector */}
+                  <div className="space-y-1.5">
+                    <span className="text-[8px] text-gray-400 uppercase tracking-wider block">Color Spectrum</span>
+                    <div className="grid grid-cols-3 gap-1">
+                      {[
+                        { id: 'split', label: 'Split Y/B' },
+                        { id: 'cyan', label: 'Cyan' },
+                        { id: 'amber', label: 'Amber' },
+                        { id: 'green', label: 'Green' },
+                        { id: 'white', label: 'White' },
+                      ].map((theme) => (
+                        <button
+                          key={theme.id}
+                          onClick={() => setOledTheme(theme.id as any)}
+                          className={`px-1.5 py-1 text-[8px] uppercase tracking-wider rounded-sm border transition-all text-center
+                            ${oledTheme === theme.id 
+                              ? 'bg-[#00ffcc] text-black border-[#00ffcc] font-bold shadow-[0_0_8px_rgba(0,255,204,0.3)]' 
+                              : 'bg-transparent border-[#00ffcc]/20 text-gray-400 hover:border-[#00ffcc]/50 hover:text-[#00ffcc]'
+                            }
+                          `}
+                        >
+                          {theme.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Brightness Slider */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[8px] text-gray-400 uppercase tracking-wider">
+                      <span>Glow Brightness</span>
+                      <span className="font-bold text-[#00ffcc]">{brightness}%</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="35" 
+                      max="150" 
+                      value={brightness} 
+                      onChange={(e) => setBrightness(Number(e.target.value))}
+                      className="w-full accent-[#00ffcc] bg-zinc-800 h-1 rounded-sm appearance-none cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Hardware Toggles */}
+                  <div className="space-y-2 pt-1 text-[8px] text-gray-300">
+                    <label className="flex items-center space-x-2 cursor-pointer group">
+                      <input 
+                        type="checkbox" 
+                        checked={showPCB} 
+                        onChange={(e) => setShowPCB(e.target.checked)}
+                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] focus:ring-0 cursor-pointer accent-[#00ffcc]"
+                      />
+                      <span className="group-hover:text-white uppercase tracking-wider">Physical PCB Base</span>
+                    </label>
+
+                    <label className="flex items-center space-x-2 cursor-pointer group">
+                      <input 
+                        type="checkbox" 
+                        checked={pixelGrid} 
+                        onChange={(e) => setPixelGrid(e.target.checked)}
+                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] focus:ring-0 cursor-pointer accent-[#00ffcc]"
+                      />
+                      <span className="group-hover:text-white uppercase tracking-wider">Subpixel Dot-Matrix</span>
+                    </label>
+
+                    <label className="flex items-center space-x-2 cursor-pointer group">
+                      <input 
+                        type="checkbox" 
+                        checked={glassShine} 
+                        onChange={(e) => setGlassShine(e.target.checked)}
+                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] focus:ring-0 cursor-pointer accent-[#00ffcc]"
+                      />
+                      <span className="group-hover:text-white uppercase tracking-wider">Gloss Glass Glare</span>
+                    </label>
+
+                    <label className="flex items-center space-x-2 cursor-pointer group">
+                      <input 
+                        type="checkbox" 
+                        checked={screenFlicker} 
+                        onChange={(e) => setScreenFlicker(e.target.checked)}
+                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] focus:ring-0 cursor-pointer accent-[#00ffcc]"
+                      />
+                      <span className="group-hover:text-white uppercase tracking-wider">Camera Refresh Flicker</span>
+                    </label>
+                  </div>
+                </div>
+             </div>
+
+             {/* Real-time Logger Console */}
+             <div className="flex-1 flex flex-col mt-6 min-h-[120px]">
+                <span className="text-[10px] tracking-widest uppercase opacity-50 mb-2">Live Console Logs</span>
+                <div className="flex-1 bg-black border border-[#00ffcc]/10 p-3 rounded-sm font-mono text-[9px] overflow-y-auto space-y-1.5 h-32 scrollbar-thin">
+                   {logs.length === 0 ? (
+                      <span className="text-gray-600 italic">Waiting for events...</span>
+                   ) : (
+                      logs.map((log, i) => (
+                        <div key={i} className="leading-relaxed">
+                          <span className="text-gray-500 mr-1.5">[{log.time}]</span>
+                          <span className={
+                            log.type === 'success' ? 'text-green-400' :
+                            log.type === 'warn' ? 'text-yellow-400' :
+                            log.type === 'error' ? 'text-red-400' : 'text-[#00ffcc]'
+                          }>
+                            {log.message}
+                          </span>
+                        </div>
+                      ))
+                   )}
+                </div>
+             </div>
+
+             <div className="mt-6">
+                <button 
+                  onClick={() => setShowTemplate(true)}
+                  className="w-full py-2 bg-transparent hover:bg-[#00ffcc]/10 border border-[#00ffcc] text-[#00ffcc] uppercase text-xs font-bold tracking-widest rounded-sm transition-all"
+                >
+                  Open Blueprint
+                </button>
+             </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+
