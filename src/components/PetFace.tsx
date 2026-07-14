@@ -13,16 +13,20 @@ interface PetFaceProps {
     mouthOpen: number;     // 0 to 1
   };
   micVolume?: number;
+  micPitch?: number;
   isCalibrating?: boolean;
   isAsleep?: boolean;
   onWake?: () => void;
   // OLED Realistic Customizations
-  oledTheme?: 'split' | 'cyan' | 'amber' | 'green' | 'white';
+  oledTheme?: 'split' | 'cyan' | 'amber' | 'green' | 'white' | 'dynamic';
+  character?: 'classic' | 'cyber' | 'kawaii' | 'pensive' | 'furious' | 'chaotic';
   pixelGrid?: boolean;
   glassShine?: boolean;
   showPCB?: boolean;
   brightness?: number;
   screenFlicker?: boolean;
+  isNightTime?: boolean;
+  isAffirmative?: boolean;
 }
 
 export function PetFace({ 
@@ -31,24 +35,32 @@ export function PetFace({
   lookOffset = { x: 0, y: 0 }, 
   expression, 
   micVolume = 0, 
+  micPitch = 0,
   isCalibrating = false, 
   isAsleep = false, 
   onWake,
   oledTheme = 'split',
+  character = 'classic',
   pixelGrid = true,
   glassShine = true,
   showPCB = true,
   brightness = 100,
-  screenFlicker = true
+  screenFlicker = true,
+  isNightTime = false,
+  isAffirmative = false
 }: PetFaceProps) {
   const [isBlinking, setIsBlinking] = useState(false);
   const [isPoked, setIsPoked] = useState(false);
   const [isFeeding, setIsFeeding] = useState(false);
   const [isPetting, setIsPetting] = useState(false);
+  const [isNudging, setIsNudging] = useState(false);
   const [pixelShift, setPixelShift] = useState({ x: 0, y: 0 });
+  const [idleOffset, setIdleOffset] = useState({ x: 0, y: 0 });
 
   const swipeRef = useRef({ x: 0, y: 0, dist: 0 });
   const petTimeoutRef = useRef<any>(null);
+  const idleIntervalRef = useRef<any>(null);
+  const interactionTimeoutRef = useRef<any>(null);
 
   useEffect(() => {
     // OLED Burn-in protection: slightly shift the face every 10 seconds
@@ -64,13 +76,87 @@ export function PetFace({
   useEffect(() => {
     // Random blinking overlay to feel alive
     const blinkInterval = setInterval(() => {
-      if (Math.random() > 0.4 && !isDistracted && !isPoked && !isAsleep && !isFeeding && !isPetting) {
+      if (Math.random() > 0.4 && !isPoked && !isAsleep && !isFeeding && !isPetting) {
         setIsBlinking(true);
         setTimeout(() => setIsBlinking(false), 120);
       }
     }, 2500);
     return () => clearInterval(blinkInterval);
-  }, [isDistracted, isPoked, isAsleep, isFeeding, isPetting]);
+  }, [isPoked, isAsleep, isFeeding, isPetting]);
+
+  useEffect(() => {
+    if (isDistracted && !isAsleep) {
+      idleIntervalRef.current = setInterval(() => {
+        setIdleOffset({
+          x: (Math.random() - 0.5) * 40,
+          y: (Math.random() - 0.5) * 20,
+        });
+      }, 2000);
+    } else {
+      setIdleOffset({ x: 0, y: 0 });
+      if (idleIntervalRef.current) clearInterval(idleIntervalRef.current);
+    }
+    return () => clearInterval(idleIntervalRef.current);
+  }, [isDistracted, isAsleep]);
+
+  // Gentle tactile haptic feedback on mobile devices using standard Vibration API
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      if (isBlinking) {
+        navigator.vibrate(10); // Super subtle 10ms crisp tap when the pet blinks
+      }
+    }
+  }, [isBlinking]);
+
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      if (isPoked) {
+        navigator.vibrate([35, 40, 35]); // Sensation of physical touch/poke collision
+      } else if (isPetting) {
+        navigator.vibrate([15, 60, 15]); // Gentle stroke/petting ripple feel
+      } else if (isFeeding) {
+        navigator.vibrate([25, 30, 25, 30, 25]); // Rhythmic chewing/swallowing rumble
+      } else if (isNudging) {
+        navigator.vibrate([20, 50]); // Dual nudge tap
+      }
+    }
+  }, [isPoked, isPetting, isFeeding, isNudging]);
+
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      if (isAsleep) {
+        navigator.vibrate([40, 120, 40]); // Slow smooth transition as pet drifts off
+      } else {
+        navigator.vibrate(40); // Standard quick wake up hum
+      }
+    }
+  }, [isAsleep]);
+
+  const prevCharacterRef = useRef(character);
+  useEffect(() => {
+    if (character !== prevCharacterRef.current) {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate([20, 15, 20]); // Light double-click feel when switching expression themes
+      }
+      prevCharacterRef.current = character;
+    }
+  }, [character]);
+
+  useEffect(() => {
+    if (interactionTimeoutRef.current) clearTimeout(interactionTimeoutRef.current);
+    if (!isSpeaking && !isAsleep && !isPoked && !isPetting && !isFeeding && !isDistracted) {
+      interactionTimeoutRef.current = setTimeout(() => {
+        if (Math.random() > 0.4) {
+          setIsNudging(true);
+          setTimeout(() => setIsNudging(false), 600);
+        } else {
+          setIsBlinking(true);
+          setTimeout(() => setIsBlinking(false), 150);
+        }
+      }, 5000);
+    }
+    return () => clearTimeout(interactionTimeoutRef.current);
+  }, [isSpeaking, lookOffset.x, lookOffset.y, isAsleep, isPoked, isPetting, isFeeding, isDistracted]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (onWake) onWake();
@@ -112,75 +198,226 @@ export function PetFace({
   };
 
   // Interpolate eyebrow transformations
-  const leftBrowY = isAsleep ? 4 : isFeeding ? -15 : isPetting ? -8 : isPoked ? 0 : -8 - (expression?.leftBrowRaise ?? 0) * 8;
-  const leftBrowRotate = isAsleep ? 0 : isFeeding ? -15 : isPetting ? -25 : isPoked ? -20 : (expression?.leftBrowRaise ?? 0) * 15;
+  let leftBrowY = isAsleep ? 4 : isFeeding ? -15 : isPetting ? -8 : isPoked ? 0 : isDistracted ? -4 : -8 - (expression?.leftBrowRaise ?? 0) * 8;
+  let leftBrowRotate = isAsleep ? 0 : isFeeding ? -15 : isPetting ? -25 : isPoked ? -20 : isDistracted ? -15 : (expression?.leftBrowRaise ?? 0) * 15;
 
-  const rightBrowY = isAsleep ? 4 : isFeeding ? -15 : isPetting ? -8 : isPoked ? 0 : -8 - (expression?.rightBrowRaise ?? 0) * 8;
-  const rightBrowRotate = isAsleep ? 0 : isFeeding ? 15 : isPetting ? 25 : isPoked ? 20 : -(expression?.rightBrowRaise ?? 0) * 15;
+  let rightBrowY = isAsleep ? 4 : isFeeding ? -15 : isPetting ? -8 : isPoked ? 0 : isDistracted ? -4 : -8 - (expression?.rightBrowRaise ?? 0) * 8;
+  let rightBrowRotate = isAsleep ? 0 : isFeeding ? 15 : isPetting ? 25 : isPoked ? 20 : isDistracted ? 15 : -(expression?.rightBrowRaise ?? 0) * 15;
 
-  // Determine eye scales based on tracking, random blinking, and micVolume
+  if (character === 'pensive' && !isAsleep && !isFeeding && !isPetting && !isPoked) {
+    leftBrowY = -24;
+    leftBrowRotate = -5;
+    rightBrowY = -4;
+    rightBrowRotate = -25;
+  } else if (character === 'furious' && !isAsleep && !isFeeding && !isPetting && !isPoked) {
+    leftBrowY = -4;
+    leftBrowRotate = 25;
+    rightBrowY = -4;
+    rightBrowRotate = -25;
+  } else if (character === 'chaotic' && !isAsleep && !isFeeding && !isPetting && !isPoked) {
+    leftBrowY = -20;
+    leftBrowRotate = -30;
+    rightBrowY = -16;
+    rightBrowRotate = 30;
+  }
+
+  // Determine eye scales and border radii based on tracking, random blinking, and micVolume
   const baseLeftOpen = expression ? expression.leftEyeOpen : 1.0;
   const baseRightOpen = expression ? expression.rightEyeOpen : 1.0;
 
-  let leftEyeScaleY = isBlinking || isDistracted ? 0.08 : Math.max(0.08, baseLeftOpen);
-  let rightEyeScaleY = isBlinking || isDistracted ? 0.08 : Math.max(0.08, baseRightOpen);
+  let leftEyeScaleY = isBlinking ? 0.08 : Math.max(0.08, baseLeftOpen);
+  let rightEyeScaleY = isBlinking ? 0.08 : Math.max(0.08, baseRightOpen);
+  let eyeBorderRadius = "4px";
+  let browBorderRadius = "9999px";
 
   if (isAsleep) {
     leftEyeScaleY = 0.02;
     rightEyeScaleY = 0.02;
+    eyeBorderRadius = "2px";
   } else if (isPetting) {
     // Happy squint
-    leftEyeScaleY = 0.2;
-    rightEyeScaleY = 0.2;
+    leftEyeScaleY = 0.25;
+    rightEyeScaleY = 0.25;
+    eyeBorderRadius = "16px 16px 4px 4px";
   } else if (isPoked) {
-    leftEyeScaleY = 0.1;
-    rightEyeScaleY = 0.1;
+    // Surprised wide eyes
+    leftEyeScaleY = 1.1;
+    rightEyeScaleY = 1.1;
+    eyeBorderRadius = "50%";
   } else if (isFeeding) {
+    // Content squint
     leftEyeScaleY = 0.2;
     rightEyeScaleY = 0.2;
+    eyeBorderRadius = "8px";
+  } else if (isDistracted) {
+    // Droopy sad eyes
+    leftEyeScaleY = 0.6;
+    rightEyeScaleY = 0.6;
+    eyeBorderRadius = "16px 16px 40% 40%";
   } else if (!isSpeaking && !isDistracted) {
-    // Widen eyes slightly when user speaks (listening)
-    leftEyeScaleY = Math.min(1.5, leftEyeScaleY + micVolume * 0.4);
-    rightEyeScaleY = Math.min(1.5, rightEyeScaleY + micVolume * 0.4);
+    // Pitch-Reactive Expressions
+    if (micPitch > 1000) {
+      // High pitch: surprise, wide eyes
+      leftEyeScaleY = 1.3;
+      rightEyeScaleY = 1.3;
+      eyeBorderRadius = "50%";
+      leftBrowY = -24;
+      rightBrowY = -24;
+    } else if (micPitch > 50 && micPitch < 400 && micVolume > 0.1) {
+      // Low pitch: squint / pensive
+      leftEyeScaleY = 0.5;
+      rightEyeScaleY = 0.5;
+      eyeBorderRadius = "20%";
+      leftBrowY = -4;
+      leftBrowRotate = -10;
+      rightBrowY = -4;
+      rightBrowRotate = 10;
+    } else {
+      // Widen eyes slightly when user speaks normally (listening)
+      leftEyeScaleY = Math.min(1.5, leftEyeScaleY + micVolume * 0.4);
+      rightEyeScaleY = Math.min(1.5, rightEyeScaleY + micVolume * 0.4);
+      if (micVolume > 0.1) eyeBorderRadius = "8px 8px 12px 12px";
+    }
+  }
+
+  // Character Overrides
+  let eyeWidth = 56;
+  if (character === 'kawaii') {
+    eyeWidth = 64;
+    // kawaii eyes are super round unless sleeping/squinting
+    if (!isAsleep && !isBlinking && !isPetting && !isFeeding) {
+      eyeBorderRadius = "50%";
+    }
+  } else if (character === 'cyber') {
+    eyeWidth = 40;
+    eyeBorderRadius = "0px";
+    browBorderRadius = "0px";
+  } else if (character === 'furious' && !isAsleep && !isBlinking && !isPetting && !isFeeding) {
+    leftEyeScaleY = 0.4;
+    rightEyeScaleY = 0.4;
+    eyeBorderRadius = "0px";
+  } else if (character === 'chaotic' && !isAsleep && !isBlinking && !isPetting && !isFeeding) {
+    leftEyeScaleY = 1.1;
+    rightEyeScaleY = 0.7;
+    eyeBorderRadius = "50%";
+  } else if (character === 'pensive' && !isAsleep && !isBlinking && !isPetting && !isFeeding) {
+    leftEyeScaleY = 0.9;
+    rightEyeScaleY = 0.6;
+    eyeBorderRadius = "40%";
   }
 
   // Combine speaker state and mouth tracker
-  const mouthAnimate = isAsleep
-    ? { height: "2px", width: "8px", borderRadius: "2px" }
+  let mouthAnimate: any = isAsleep
+    ? { height: "8px", width: "12px", borderRadius: "4px" }
     : isPetting
-      ? { height: ["4px", "6px", "4px"], width: ["24px", "32px", "24px"], borderRadius: "8px" }
+      ? { height: ["12px", "20px", "12px"], width: ["28px", "36px", "28px"], borderRadius: "4px 4px 24px 24px" } // Happy smile
       : isFeeding
-        ? { height: ["10px", "20px", "10px"], width: ["16px", "12px", "16px"], borderRadius: "50%" }
+        ? { height: ["12px", "28px", "12px"], width: ["20px", "16px", "20px"], borderRadius: "50%" } // Chewing
         : isPoked
-          ? { height: "4px", width: "12px", borderRadius: "4px" }
+          ? { height: "28px", width: "24px", borderRadius: "50%" } // O-shape surprise
           : isSpeaking
             ? {
-                height: ["4px", "24px", "8px", "16px"],
-                width: ["16px", "32px", "24px"],
-                borderRadius: "4px",
+                height: ["12px", "32px", "16px", "24px"],
+                width: ["24px", "40px", "32px", "36px"],
+                borderRadius: ["8px", "16px", "12px", "20px"],
               }
-            : {
-                height: `${4 + (expression?.mouthOpen ?? 0) * 28 + micVolume * 10}px`,
-                width: `${16 + (expression?.mouthOpen ?? 0) * 20 + micVolume * 10}px`,
-                borderRadius: (expression?.mouthOpen ?? 0) > 0.35 || micVolume > 0.2 ? "50%" : "4px",
-              };
+            : isDistracted
+              ? { height: "12px", width: "20px", borderRadius: "12px 12px 4px 4px" } // Sad / disconnected frown
+              : {
+                  height: `${8 + (expression?.mouthOpen ?? 0) * 36 + micVolume * 16}px`,
+                  width: `${24 + (expression?.mouthOpen ?? 0) * 24 + micVolume * 12}px`,
+                  borderRadius: (expression?.mouthOpen ?? 0) > 0.4 || micVolume > 0.2 ? "16px" : "8px",
+                };
+
+  if (character === 'kawaii') {
+    if (typeof mouthAnimate.borderRadius === 'string' && !isSpeaking && !isFeeding && !isPoked && !isAsleep) {
+      mouthAnimate.borderRadius = "50% 50% 16px 16px";
+    }
+  } else if (character === 'cyber') {
+    mouthAnimate.borderRadius = "0px";
+  } else if (character === 'furious' && !isSpeaking && !isAsleep && !isFeeding && !isPetting && !isPoked) {
+    mouthAnimate.height = "4px";
+    mouthAnimate.width = "40px";
+    mouthAnimate.borderRadius = "50% 50% 0 0";
+    mouthAnimate.rotate = 0;
+  } else if (character === 'chaotic' && !isSpeaking && !isAsleep && !isFeeding && !isPetting && !isPoked) {
+    mouthAnimate.height = ["8px", "12px", "4px", "8px"];
+    mouthAnimate.width = ["20px", "28px", "24px", "20px"];
+    mouthAnimate.rotate = [-5, 5, -5];
+    mouthAnimate.borderRadius = "2px";
+  } else if (character === 'pensive' && !isSpeaking && !isAsleep && !isFeeding && !isPetting && !isPoked) {
+    mouthAnimate.height = "6px";
+    mouthAnimate.width = "12px";
+    mouthAnimate.rotate = -15;
+    mouthAnimate.x = 8;
+  }
+
+  let mouthTransition: any = isPoked 
+    ? { duration: 0.4 }
+    : (isSpeaking || isFeeding || isPetting) ? {
+    repeat: Infinity,
+    duration: isFeeding ? 0.4 : isPetting ? 2 : 0.3,
+    ease: "easeInOut",
+  } : {
+    type: "spring",
+    stiffness: 180,
+    damping: 14
+  };
+
+  if (character === 'chaotic' && !isSpeaking && !isAsleep && !isFeeding && !isPetting && !isPoked) {
+    mouthTransition = { repeat: Infinity, duration: 0.15, ease: "linear" };
+  }
 
   // Face container animations
-  const faceAnimate = isPoked
+  let faceAnimate: any = isPoked
     ? { x: [-15, 15, -10, 10, 0], y: 5 }
+    : isNudging
+      ? { x: [lookOffset.x, lookOffset.x + 12, lookOffset.x - 6, lookOffset.x], y: [lookOffset.y, lookOffset.y - 8, lookOffset.y + 4, lookOffset.y], rotate: [0, 8, -4, 0] }
     : isPetting
       ? { x: [-5, 5, -5, 5, 0], y: [-2, 2, -2] }
       : isCalibrating
         ? { x: [-20, 20, 10, -10, -20], y: [-5, 5, -5, 5, -5] }
-        : { x: lookOffset.x, y: lookOffset.y };
+        : isDistracted
+          ? { x: idleOffset.x, y: idleOffset.y }
+          : { x: lookOffset.x, y: lookOffset.y };
 
-  const faceTransition = isPoked
+  if (character === 'chaotic' && !isAsleep) {
+    faceAnimate = {
+      x: [lookOffset.x - 2, lookOffset.x + 2, lookOffset.x - 1, lookOffset.x + 1, lookOffset.x],
+      y: [lookOffset.y - 1, lookOffset.y + 1, lookOffset.y - 2, lookOffset.y + 2, lookOffset.y]
+    };
+  } else if (character === 'furious' && !isAsleep) {
+    faceAnimate = {
+      ...faceAnimate,
+      scale: [1, 1.03, 1]
+    };
+  } else if (character === 'pensive' && !isAsleep) {
+    faceAnimate = {
+      ...faceAnimate,
+      y: [lookOffset.y - 4, lookOffset.y + 4, lookOffset.y - 4],
+      filter: ["blur(0.5px)", "blur(1.5px)", "blur(0.5px)"]
+    };
+  }
+
+  let faceTransition: any = isPoked
     ? { duration: 0.4 }
+    : isNudging
+      ? { duration: 0.6, ease: "easeInOut" }
     : isPetting
       ? { repeat: Infinity, duration: 2, ease: "easeInOut" }
       : isCalibrating
         ? { repeat: Infinity, duration: 2.5, ease: "easeInOut" }
-        : { type: "spring", stiffness: 100, damping: 20 };
+        : isDistracted
+          ? { type: "tween", duration: 1.5, ease: "easeInOut" }
+          : { type: "spring", stiffness: 100, damping: 20 };
+
+  if (character === 'chaotic' && !isAsleep) {
+    faceTransition = { repeat: Infinity, duration: 0.15, ease: "linear" };
+  } else if (character === 'furious' && !isAsleep) {
+    faceTransition = { repeat: Infinity, duration: 0.3, ease: "easeInOut" };
+  } else if (character === 'pensive' && !isAsleep) {
+    faceTransition = { repeat: Infinity, duration: 4, ease: "easeInOut" };
+  }
 
   const breathingAnimate = isAsleep
     ? { x: pixelShift.x, y: [pixelShift.y, 8 + pixelShift.y, pixelShift.y], scale: [1, 1.02, 1] }
@@ -201,6 +438,7 @@ export function PetFace({
   else if (oledTheme === 'green') baseColor = "#33ff33";
   else if (oledTheme === 'white') baseColor = "#f8fafc";
   else if (oledTheme === 'split') baseColor = "#00ffcc"; // Split uses cyan for face, yellow for header
+  else if (oledTheme === 'dynamic') baseColor = isNightTime ? "#6366f1" : "#33ff33"; // Default dynamic active is green (indigo in night mode)
 
   // For high authenticity, monochromatic themes remain purely monochromatic!
   // Split yellow/blue theme supports colorful states.
@@ -211,6 +449,14 @@ export function PetFace({
     else if (isFeeding) currentTheme = "#66ff66"; // Green
     else if (isPoked) currentTheme = "#ff3333"; // Red
     else if (isSpeaking) currentTheme = "#cc66ff"; // Purple
+  } else if (oledTheme === 'dynamic') {
+    if (isAsleep) currentTheme = "#4488ff"; // Blue when asleep
+    else if (isSpeaking) currentTheme = "#00ffcc"; // Cool cyan when processing/speaking
+    else if (micVolume > 0.05) currentTheme = "#ffb000"; // Warm amber when listening
+    else if (isPetting) currentTheme = "#ff66b2"; // Pink
+    else if (isPoked) currentTheme = "#ff3333"; // Red
+    else if (isFeeding) currentTheme = "#66ff66"; // Green
+    else currentTheme = isNightTime ? "#6366f1" : "#33ff33"; // Soothing Indigo/blue in night mode, green when active during the day
   } else {
     // Monochromatic state shifts (slight intensity/brightness change or sleeping tint)
     if (isAsleep) {
@@ -218,8 +464,14 @@ export function PetFace({
     }
   }
 
-  const baseGlow = isAsleep ? 5 : 15 + (micVolume * 25);
-  const glowShadow = `0 0 ${baseGlow}px ${currentTheme}`;
+  let baseGlow = isAsleep ? 5 : 15 + (micVolume * 25);
+  if (character === 'furious') baseGlow += 10;
+  if (character === 'pensive') baseGlow -= 5;
+  
+  let glowShadow = `0 0 ${baseGlow}px ${currentTheme}`;
+  if (character === 'chaotic' && !isAsleep) {
+    glowShadow = `-4px 0 0 rgba(255,0,0,0.8), 4px 0 0 rgba(0,255,255,0.8), 0 0 ${baseGlow}px ${currentTheme}`;
+  }
 
   // Helper render to avoid code duplication
   const renderOledScreen = () => {
@@ -302,52 +554,70 @@ export function PetFace({
               <div className="relative flex flex-col items-center">
                 {/* Left Eyebrow */}
                 <motion.div
-                  animate={{ y: leftBrowY, rotate: leftBrowRotate, backgroundColor: currentTheme }}
+                  animate={{ width: eyeWidth, y: leftBrowY, rotate: leftBrowRotate, borderRadius: browBorderRadius, backgroundColor: currentTheme }}
                   transition={{ type: "spring", stiffness: 150, damping: 15 }}
-                  className="absolute w-14 h-1.5 rounded-full"
+                  className="absolute h-1"
                   style={{ top: -16, boxShadow: glowShadow }}
                 />
                 {/* Left Eye Ball */}
                 <motion.div 
-                  animate={{ scaleY: leftEyeScaleY, backgroundColor: currentTheme }}
+                  animate={{ width: eyeWidth, height: leftEyeScaleY * 56, borderRadius: eyeBorderRadius, borderColor: currentTheme }}
                   transition={{ type: "spring", stiffness: 220, damping: 15 }}
-                  className="w-14 h-14 rounded-sm origin-center"
+                  className="origin-center border-[4px] bg-transparent relative"
                   style={{ boxShadow: glowShadow }}
-                />
+                >
+                  {character === 'kawaii' && !isAsleep && !isBlinking && (
+                    <motion.div 
+                      className="absolute top-1 right-2 w-3 h-3 rounded-full bg-white opacity-80 mix-blend-screen"
+                      style={{ boxShadow: "0 0 4px white" }}
+                    />
+                  )}
+                  {character === 'cyber' && !isAsleep && !isBlinking && (
+                    <motion.div 
+                      className="absolute inset-y-2 left-1 right-1 border-y-[2px]"
+                      style={{ borderColor: currentTheme, opacity: 0.5 }}
+                    />
+                  )}
+                </motion.div>
               </div>
 
               {/* Right Eye Container */}
               <div className="relative flex flex-col items-center">
                 {/* Right Eyebrow */}
                 <motion.div
-                  animate={{ y: rightBrowY, rotate: rightBrowRotate, backgroundColor: currentTheme }}
+                  animate={{ width: eyeWidth, y: rightBrowY, rotate: rightBrowRotate, borderRadius: browBorderRadius, backgroundColor: currentTheme }}
                   transition={{ type: "spring", stiffness: 150, damping: 15 }}
-                  className="absolute w-14 h-1.5 rounded-full"
+                  className="absolute h-1"
                   style={{ top: -16, boxShadow: glowShadow }}
                 />
                 {/* Right Eye Ball */}
                 <motion.div 
-                  animate={{ scaleY: rightEyeScaleY, backgroundColor: currentTheme }}
+                  animate={{ width: eyeWidth, height: rightEyeScaleY * 56, borderRadius: eyeBorderRadius, borderColor: currentTheme }}
                   transition={{ type: "spring", stiffness: 220, damping: 15 }}
-                  className="w-14 h-14 rounded-sm origin-center"
+                  className="origin-center border-[4px] bg-transparent relative"
                   style={{ boxShadow: glowShadow }}
-                />
+                >
+                  {character === 'kawaii' && !isAsleep && !isBlinking && (
+                    <motion.div 
+                      className="absolute top-1 right-2 w-3 h-3 rounded-full bg-white opacity-80 mix-blend-screen"
+                      style={{ boxShadow: "0 0 4px white" }}
+                    />
+                  )}
+                  {character === 'cyber' && !isAsleep && !isBlinking && (
+                    <motion.div 
+                      className="absolute inset-y-2 left-1 right-1 border-y-[2px]"
+                      style={{ borderColor: currentTheme, opacity: 0.5 }}
+                    />
+                  )}
+                </motion.div>
               </div>
             </motion.div>
 
             {/* Mouth */}
             <motion.div 
-              animate={{ ...mouthAnimate, backgroundColor: currentTheme }}
-              transition={(isSpeaking || isFeeding) ? {
-                repeat: Infinity,
-                duration: isFeeding ? 0.4 : 0.3,
-                ease: "easeInOut",
-              } : {
-                type: "spring",
-                stiffness: 180,
-                damping: 14
-              }}
-              className="rounded-sm"
+              animate={{ ...mouthAnimate, borderColor: currentTheme }}
+              transition={mouthTransition}
+              className="rounded-sm border-[4px] bg-transparent"
               style={{ boxShadow: glowShadow }}
             />
           </motion.div>

@@ -23,18 +23,28 @@ export default function App() {
   const [showMonitor, setShowMonitor] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [micVolume, setMicVolume] = useState(0);
+  const [micPitch, setMicPitch] = useState(0);
   const [isAsleep, setIsAsleep] = useState(false);
   const lastActiveRef = useRef<number>(Date.now());
   const isAsleepRef = useRef(false);
   const isSpeakingRef = useRef(false);
 
   // OLED Screen Config States
-  const [oledTheme, setOledTheme] = useState<'split' | 'cyan' | 'amber' | 'green' | 'white'>('split');
+  const [oledTheme, setOledTheme] = useState<'split' | 'cyan' | 'amber' | 'green' | 'white' | 'dynamic'>('split');
+  const [character, setCharacter] = useState<'classic' | 'cyber' | 'kawaii' | 'pensive' | 'furious' | 'chaotic'>('classic');
   const [pixelGrid, setPixelGrid] = useState(true);
   const [glassShine, setGlassShine] = useState(true);
-  const [showPCB, setShowPCB] = useState(true);
+  const [showPCB, setShowPCB] = useState(false);
   const [brightness, setBrightness] = useState(100);
   const [screenFlicker, setScreenFlicker] = useState(true);
+  const [autoAmbient, setAutoAmbient] = useState(true);
+  const [ambientLight, setAmbientLight] = useState<number | null>(null);
+  const [isNightTime, setIsNightTime] = useState(false);
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
+  const wakeWordEnabledRef = useRef(true);
+  const [isAffirmative, setIsAffirmative] = useState(false);
+  const lastNodTimeRef = useRef<number>(0);
+  const nodHistoryRef = useRef<{ y: number; t: number }[]>([]);
 
   const [expression, setExpression] = useState({
     leftEyeOpen: 1.0,
@@ -53,6 +63,228 @@ export default function App() {
   const fallbackCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastFaceUpdateRef = useRef<number>(0);
   const prevFrameDataRef = useRef<Uint8ClampedArray | null>(null);
+
+  const [uiLookOffset, setUiLookOffset] = useState<{x: number, y: number} | null>(null);
+  const uiLookTimerRef = useRef<any>(null);
+
+  useEffect(() => {
+    const handleFocus = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        setUiLookOffset({ x: 0, y: 30 }); 
+        if (uiLookTimerRef.current) clearTimeout(uiLookTimerRef.current);
+      }
+    };
+
+    const handleBlur = () => {
+      if (uiLookTimerRef.current) clearTimeout(uiLookTimerRef.current);
+      uiLookTimerRef.current = setTimeout(() => {
+        setUiLookOffset(null);
+      }, 1000);
+    };
+
+    const handleMouseEnter = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const btn = target.closest('button');
+      if (btn) {
+        const rect = btn.getBoundingClientRect();
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+        const buttonCenterX = rect.left + rect.width / 2;
+        const buttonCenterY = rect.top + rect.height / 2;
+        
+        const offsetX = ((buttonCenterX - centerX) / centerX) * 40;
+        const offsetY = ((buttonCenterY - centerY) / centerY) * 20;
+
+        setUiLookOffset({ x: offsetX, y: offsetY });
+        if (uiLookTimerRef.current) clearTimeout(uiLookTimerRef.current);
+      }
+    };
+
+    const handleMouseLeave = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('button')) {
+        if (uiLookTimerRef.current) clearTimeout(uiLookTimerRef.current);
+        uiLookTimerRef.current = setTimeout(() => {
+          setUiLookOffset(null);
+        }, 500);
+      }
+    };
+
+    document.addEventListener('focusin', handleFocus);
+    document.addEventListener('focusout', handleBlur);
+    document.addEventListener('mouseover', handleMouseEnter);
+    document.addEventListener('mouseout', handleMouseLeave);
+
+    return () => {
+      document.removeEventListener('focusin', handleFocus);
+      document.removeEventListener('focusout', handleBlur);
+      document.removeEventListener('mouseover', handleMouseEnter);
+      document.removeEventListener('mouseout', handleMouseLeave);
+    };
+  }, []);
+
+  // Ambient light & Night-time auto brightness controller
+  useEffect(() => {
+    if (appState !== 'running') return;
+
+    let logCounter = 0;
+    const interval = setInterval(() => {
+      // 1. Check local clock for night time
+      const hour = new Date().getHours();
+      const timeIsNight = hour >= 20 || hour < 6;
+      setIsNightTime(timeIsNight);
+
+      // 2. Measure average light level from camera frame
+      if (videoRef.current && videoRef.current.readyState >= 2) {
+        const video = videoRef.current;
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = 16;
+        tempCanvas.height = 16;
+        const tempCtx = tempCanvas.getContext('2d');
+        if (tempCtx) {
+          tempCtx.drawImage(video, 0, 0, 16, 16);
+          try {
+            const imgData = tempCtx.getImageData(0, 0, 16, 16);
+            const data = imgData.data;
+            let totalLuminance = 0;
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+              // Relative luminance formula (Photometric formula)
+              totalLuminance += (0.2126 * r + 0.7152 * g + 0.0722 * b);
+            }
+            const avgLuminance = Math.round(totalLuminance / (data.length / 4));
+            setAmbientLight(avgLuminance);
+
+            if (autoAmbient) {
+              let targetBrightness = 100;
+              let modeName = "Normal";
+              if (avgLuminance < 45) {
+                targetBrightness = 40; // Eye-safe dimming for dark environment
+                modeName = "Low Light (Eye-Safe Dark Mode)";
+              } else if (avgLuminance < 90) {
+                targetBrightness = 70; // Soft dimming
+                modeName = "Dimly Lit";
+              } else if (avgLuminance > 175) {
+                targetBrightness = 130; // Boost brightness for readable grid
+                modeName = "Bright Light (High Contrast)";
+              } else {
+                targetBrightness = 100;
+                modeName = "Standard Room Light";
+              }
+
+              setBrightness(targetBrightness);
+
+              // Periodic logging so user knows it's working
+              logCounter++;
+              if (logCounter >= 10) {
+                addLog(`Light Sensor: ${avgLuminance} lx (${modeName}). Adjusting Screen Glow to ${targetBrightness}%`, "info");
+                logCounter = 0;
+              }
+            }
+          } catch (err) {
+            // Silence cross-origin canvas reading errors if security rules block it
+          }
+        }
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [appState, autoAmbient]);
+
+  // Sync wake word ref with state
+  useEffect(() => {
+    wakeWordEnabledRef.current = wakeWordEnabled;
+  }, [wakeWordEnabled]);
+
+  // Web Speech API for 'Hey Antonio' keyword spotting
+  useEffect(() => {
+    if (appState !== 'running') return;
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      addLog("Local Speech Recognition API not supported in this browser. Falling back to default audio/volume activation.", "warn");
+      return;
+    }
+
+    let recognition: any = null;
+    let isStoppedManually = false;
+
+    const startRecognition = () => {
+      if (isStoppedManually) return;
+      try {
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = () => {
+          addLog("Keyword Spotter active: waiting for wake-phrase 'Hey Antonio'...", "success");
+        };
+
+        recognition.onresult = (event: any) => {
+          if (!wakeWordEnabledRef.current) return;
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript.toLowerCase();
+            if (transcript.includes('antonio')) {
+              // Only wake up if the pet is actually asleep
+              if (isAsleepRef.current) {
+                lastActiveRef.current = Date.now();
+                setIsAsleep(false);
+                isAsleepRef.current = false;
+                addLog(`Wake word recognized: "${transcript.trim()}"! Antonio is awake.`, "success");
+                
+                // Play gentle mobile vibrate on wake
+                if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                  navigator.vibrate([40, 30, 40]);
+                }
+              } else {
+                // If already awake, reset inactivity timeout so it stays awake
+                lastActiveRef.current = Date.now();
+              }
+            }
+          }
+        };
+
+        recognition.onerror = (event: any) => {
+          if (event.error !== 'no-speech' && event.error !== 'audio-capture') {
+            console.warn("Speech Recognition Error:", event.error);
+          }
+        };
+
+        recognition.onend = () => {
+          if (!isStoppedManually && appState === 'running') {
+            // Keep listening
+            setTimeout(() => {
+              if (!isStoppedManually) {
+                try {
+                  recognition.start();
+                } catch (e) {}
+              }
+            }, 300);
+          }
+        };
+
+        recognition.start();
+      } catch (err) {
+        console.error("Speech Recognition setup error:", err);
+      }
+    };
+
+    startRecognition();
+
+    return () => {
+      isStoppedManually = true;
+      if (recognition) {
+        try {
+          recognition.abort();
+        } catch (e) {}
+      }
+    };
+  }, [appState]);
 
   const addLog = (message: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
     const time = new Date().toLocaleTimeString();
@@ -104,19 +336,38 @@ export default function App() {
          if (inputAudioCtxRef.current && inputAudioCtxRef.current.state === 'running') {
             analyzer.getByteFrequencyData(dataArray);
             let sum = 0;
+            let maxVal = -1;
+            let maxIndex = -1;
             for (let i = 0; i < bufferLength; i++) {
               sum += dataArray[i];
+              if (dataArray[i] > maxVal) {
+                maxVal = dataArray[i];
+                maxIndex = i;
+              }
             }
             const avg = sum / bufferLength;
             // Normalize volume roughly between 0.0 and 1.0
             const vol = Math.min(1, avg / 48); 
             setMicVolume(vol);
 
+            if (vol > 0.05) {
+               const nyquist = inputAudioCtxRef.current.sampleRate / 2;
+               const pitchFreq = (maxIndex / bufferLength) * nyquist;
+               setMicPitch(pitchFreq);
+            } else {
+               setMicPitch(0);
+            }
+
             if (vol > 0.15 || isSpeakingRef.current) {
-              lastActiveRef.current = Date.now();
-              if (isAsleepRef.current) {
-                setIsAsleep(false);
-                isAsleepRef.current = false;
+              const wasAsleep = isAsleepRef.current;
+              if (wasAsleep && wakeWordEnabledRef.current && !isSpeakingRef.current) {
+                // If wake-word trigger is enabled, general noise shouldn't wake it up
+              } else {
+                lastActiveRef.current = Date.now();
+                if (isAsleepRef.current) {
+                  setIsAsleep(false);
+                  isAsleepRef.current = false;
+                }
               }
             }
 
@@ -261,6 +512,48 @@ export default function App() {
               const offsetY = (nose.y - 0.5) * 30;
               setLookOffset({ x: -offsetX, y: offsetY }); 
               setIsDistracted(false);
+
+              // Head Nod Gesture Listener (rapid change in y-axis)
+              const nowMs = performance.now();
+              nodHistoryRef.current.push({ y: nose.y, t: nowMs });
+              
+              // Only keep last 600ms of history
+              nodHistoryRef.current = nodHistoryRef.current.filter(item => nowMs - item.t < 600);
+              
+              if (nodHistoryRef.current.length >= 4 && nowMs - lastNodTimeRef.current > 2500 && !isAsleepRef.current) {
+                const ys = nodHistoryRef.current.map(item => item.y);
+                const minY = Math.min(...ys);
+                const maxY = Math.max(...ys);
+                const rangeY = maxY - minY;
+                
+                // standard FaceMesh coordinates: y-axis is normalized between 0.0 and 1.0. 
+                // A rapid rangeY > 0.035 indicates strong vertical movement.
+                if (rangeY > 0.035) {
+                  // Verify distinct direction change (both going down and going up)
+                  let directions = [];
+                  for (let i = 1; i < nodHistoryRef.current.length; i++) {
+                    directions.push(nodHistoryRef.current[i].y - nodHistoryRef.current[i - 1].y);
+                  }
+                  const hasDown = directions.some(d => d > 0.003);
+                  const hasUp = directions.some(d => d < -0.003);
+                  
+                  if (hasDown && hasUp) {
+                    lastNodTimeRef.current = nowMs;
+                    setIsAffirmative(true);
+                    addLog("Head Nod gesture detected! Triggering affirmative smile.", "success");
+                    
+                    // Trigger gentle mobile vibrate on nod detection
+                    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                      navigator.vibrate([20, 30, 20]);
+                    }
+                    
+                    // Reset to normal after 1.5s
+                    setTimeout(() => {
+                      setIsAffirmative(false);
+                    }, 1500);
+                  }
+                }
+              }
 
               // Eye openness / Blink tracking
               const leftDist = Math.sqrt(Math.pow(face[159].x - face[145].x, 2) + Math.pow(face[159].y - face[145].y, 2));
@@ -503,10 +796,11 @@ export default function App() {
                 )}
                 <PetFace 
                   isSpeaking={isSpeaking} 
-                  isDistracted={isDistracted} 
-                  lookOffset={lookOffset} 
+                  isDistracted={uiLookOffset ? false : isDistracted} 
+                  lookOffset={uiLookOffset || lookOffset} 
                   expression={expression} 
                   micVolume={micVolume}
+                  micPitch={micPitch}
                   isCalibrating={appState === 'calibrating'}
                   isAsleep={isAsleep}
                   onWake={() => {
@@ -517,11 +811,14 @@ export default function App() {
                     }
                   }}
                   oledTheme={oledTheme}
+                  character={character}
                   pixelGrid={pixelGrid}
                   glassShine={glassShine}
                   showPCB={showPCB}
                   brightness={brightness}
                   screenFlicker={screenFlicker}
+                  isNightTime={isNightTime}
+                  isAffirmative={isAffirmative}
                 />
              </div>
              
@@ -533,7 +830,7 @@ export default function App() {
           </div>
 
           {/* Right-side Control and Debug Deck */}
-          <div className="w-full md:w-80 border-t md:border-t-0 md:border-l border-[#00ffcc]/20 bg-zinc-950 p-6 flex flex-col h-1/3 md:h-full justify-between overflow-y-auto">
+          <div className={`w-full md:w-80 border-t md:border-t-0 md:border-l border-[#00ffcc]/20 p-6 flex flex-col h-1/3 md:h-full justify-between overflow-y-auto transition-all duration-700 ${isNightTime || (ambientLight !== null && ambientLight < 45) ? 'bg-black text-slate-400' : 'bg-zinc-950'}`}>
              <div className="space-y-6">
                 <div className="flex justify-between items-center">
                   <h3 className="text-sm font-bold tracking-widest uppercase text-[#00ffcc]">Control Deck</h3>
@@ -594,11 +891,40 @@ export default function App() {
                 <div className="space-y-4 pt-2">
                   <h4 className="text-[10px] font-bold tracking-widest uppercase text-[#00ffcc]/80">OLED Screen Config</h4>
                   
+                  {/* Character Preset Selector */}
+                  <div className="space-y-1.5">
+                    <span className="text-[8px] text-gray-400 uppercase tracking-wider block">Personality Type</span>
+                    <div className="grid grid-cols-3 gap-1">
+                      {[
+                        { id: 'classic', label: 'Classic' },
+                        { id: 'cyber', label: 'Cyber' },
+                        { id: 'kawaii', label: 'Kawaii' },
+                        { id: 'pensive', label: 'Pensive' },
+                        { id: 'furious', label: 'Furious' },
+                        { id: 'chaotic', label: 'Chaotic' },
+                      ].map((char) => (
+                        <button
+                          key={char.id}
+                          onClick={() => setCharacter(char.id as any)}
+                          className={`px-1.5 py-1 text-[8px] uppercase tracking-wider rounded-sm border transition-all text-center
+                            ${character === char.id 
+                              ? 'bg-[#00ffcc] text-black border-[#00ffcc] font-bold shadow-[0_0_8px_rgba(0,255,204,0.3)]' 
+                              : 'bg-transparent border-[#00ffcc]/20 text-gray-400 hover:border-[#00ffcc]/50 hover:text-[#00ffcc]'
+                            }
+                          `}
+                        >
+                          {char.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Color Preset Selector */}
                   <div className="space-y-1.5">
                     <span className="text-[8px] text-gray-400 uppercase tracking-wider block">Color Spectrum</span>
                     <div className="grid grid-cols-3 gap-1">
                       {[
+                        { id: 'dynamic', label: 'Dynamic Mood' },
                         { id: 'split', label: 'Split Y/B' },
                         { id: 'cyan', label: 'Cyan' },
                         { id: 'amber', label: 'Amber' },
@@ -678,6 +1004,47 @@ export default function App() {
                       />
                       <span className="group-hover:text-white uppercase tracking-wider">Camera Refresh Flicker</span>
                     </label>
+
+                    <label className="flex items-center space-x-2 cursor-pointer group">
+                      <input 
+                        type="checkbox" 
+                        checked={autoAmbient} 
+                        onChange={(e) => {
+                          setAutoAmbient(e.target.checked);
+                          if (e.target.checked) {
+                            addLog("Auto-Ambient Light Sensor enabled.", "info");
+                          } else {
+                            addLog("Auto-Ambient Light Sensor disabled.", "info");
+                          }
+                        }}
+                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] focus:ring-0 cursor-pointer accent-[#00ffcc]"
+                      />
+                      <span className="group-hover:text-white uppercase tracking-wider">Auto-Ambient Adjustment</span>
+                    </label>
+
+                    <label className="flex items-center space-x-2 cursor-pointer group">
+                      <input 
+                        type="checkbox" 
+                        checked={wakeWordEnabled} 
+                        onChange={(e) => {
+                          setWakeWordEnabled(e.target.checked);
+                          if (e.target.checked) {
+                            addLog("Voice Wake-Word Trigger ('Hey Antonio') enabled.", "info");
+                          } else {
+                            addLog("Voice Wake-Word Trigger disabled. Loud noises will activate.", "info");
+                          }
+                        }}
+                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] focus:ring-0 cursor-pointer accent-[#00ffcc]"
+                      />
+                      <span className="group-hover:text-white uppercase tracking-wider">Hey Antonio Wake Word</span>
+                    </label>
+
+                    {ambientLight !== null && (
+                      <div className="flex items-center justify-between text-[7px] text-gray-500 uppercase tracking-widest pt-1.5 border-t border-zinc-800/50">
+                        <span>Light Sensor Reading</span>
+                        <span className="font-bold text-yellow-400">{ambientLight} lx ({ambientLight < 45 ? 'Night / Dark' : ambientLight < 90 ? 'Dim' : ambientLight > 175 ? 'Bright' : 'Normal'})</span>
+                      </div>
+                    )}
                   </div>
                 </div>
              </div>
