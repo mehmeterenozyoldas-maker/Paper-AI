@@ -360,8 +360,8 @@ export function PetFace({
     ease: "easeInOut",
   } : {
     type: "spring",
-    stiffness: 180,
-    damping: 14
+    stiffness: 600,
+    damping: 30
   };
 
   if (character === 'chaotic' && !isSpeaking && !isAsleep && !isFeeding && !isPetting && !isPoked) {
@@ -409,7 +409,7 @@ export function PetFace({
         ? { repeat: Infinity, duration: 2.5, ease: "easeInOut" }
         : isDistracted
           ? { type: "tween", duration: 1.5, ease: "easeInOut" }
-          : { type: "spring", stiffness: 100, damping: 20 };
+          : { type: "spring", stiffness: 400, damping: 30 };
 
   if (character === 'chaotic' && !isAsleep) {
     faceTransition = { repeat: Infinity, duration: 0.15, ease: "linear" };
@@ -555,14 +555,14 @@ export function PetFace({
                 {/* Left Eyebrow */}
                 <motion.div
                   animate={{ width: eyeWidth, y: leftBrowY, rotate: leftBrowRotate, borderRadius: browBorderRadius, backgroundColor: currentTheme }}
-                  transition={{ type: "spring", stiffness: 150, damping: 15 }}
+                  transition={{ type: "spring", stiffness: 600, damping: 30 }}
                   className="absolute h-1"
                   style={{ top: -16, boxShadow: glowShadow }}
                 />
                 {/* Left Eye Ball */}
                 <motion.div 
                   animate={{ width: eyeWidth, height: leftEyeScaleY * 56, borderRadius: eyeBorderRadius, borderColor: currentTheme }}
-                  transition={{ type: "spring", stiffness: 220, damping: 15 }}
+                  transition={{ type: "spring", stiffness: 800, damping: 35 }}
                   className="origin-center border-[4px] bg-transparent relative"
                   style={{ boxShadow: glowShadow }}
                 >
@@ -586,14 +586,14 @@ export function PetFace({
                 {/* Right Eyebrow */}
                 <motion.div
                   animate={{ width: eyeWidth, y: rightBrowY, rotate: rightBrowRotate, borderRadius: browBorderRadius, backgroundColor: currentTheme }}
-                  transition={{ type: "spring", stiffness: 150, damping: 15 }}
+                  transition={{ type: "spring", stiffness: 600, damping: 30 }}
                   className="absolute h-1"
                   style={{ top: -16, boxShadow: glowShadow }}
                 />
                 {/* Right Eye Ball */}
                 <motion.div 
                   animate={{ width: eyeWidth, height: rightEyeScaleY * 56, borderRadius: eyeBorderRadius, borderColor: currentTheme }}
-                  transition={{ type: "spring", stiffness: 220, damping: 15 }}
+                  transition={{ type: "spring", stiffness: 800, damping: 35 }}
                   className="origin-center border-[4px] bg-transparent relative"
                   style={{ boxShadow: glowShadow }}
                 >

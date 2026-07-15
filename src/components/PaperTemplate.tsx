@@ -378,129 +378,156 @@ export function PaperTemplate({ onClose }: PaperTemplateProps) {
             {/* DYNAMIC BLUEPRINT SVG GENERATION */}
             <div className="w-full max-w-2xl max-h-[90%] flex items-center justify-center print:max-h-full print:max-w-full print:p-0">
               {selectedModel === 'iphone-se' && (
-                <svg viewBox="0 0 800 850" className="w-full h-auto stroke-current fill-none transition-all duration-300" strokeWidth="1.5">
+                <svg viewBox="0 0 900 900" className="w-full h-auto stroke-current fill-none transition-all duration-300" strokeWidth="1.5">
                   <g className="print:text-black">
-                    {/* Header Title inside Blueprint */}
-                    <text x="400" y="60" textAnchor="middle" className="text-xl font-black fill-current stroke-none tracking-widest uppercase">IPHONE SE SLEEVE BLUEPRINT</text>
-                    <text x="400" y="85" textAnchor="middle" className="text-xs font-mono fill-current stroke-none tracking-wider opacity-60">— Solid Line: CUT | Dashed Line: FOLD —</text>
+                    <text x="450" y="50" textAnchor="middle" className="text-xl font-black fill-current stroke-none tracking-widest uppercase">CLASSIC 16:9 SMARTPHONE CHASSIS</text>
+                    <text x="450" y="75" textAnchor="middle" className="text-xs font-mono fill-current stroke-none tracking-wider opacity-60">— Multi-layer iPhone SE / 8 / 7 Structural Blueprint —</text>
 
                     {/* Folds (Dashed Lines) */}
                     <g strokeDasharray="6,6" strokeWidth="1.5" className="opacity-80">
                       {/* Vertical folds */}
-                      <line x1="300" y1="160" x2="300" y2="660" />
-                      <line x1="330" y1="160" x2="330" y2="660" />
-                      <line x1="550" y1="160" x2="550" y2="660" />
-                      <line x1="580" y1="160" x2="580" y2="660" />
+                      <line x1="260" y1="180" x2="260" y2="680" />
+                      <line x1="300" y1="180" x2="300" y2="680" />
+                      <line x1="560" y1="180" x2="560" y2="680" />
+                      <line x1="600" y1="180" x2="600" y2="680" />
                       
                       {/* Horizontal fold flaps */}
-                      <line x1="80" y1="160" x2="300" y2="160" />
-                      <line x1="300" y1="160" x2="330" y2="160" />
-                      <line x1="330" y1="160" x2="550" y2="160" />
-                      <line x1="550" y1="160" x2="580" y2="160" />
-                      
-                      {/* Bottom close folds */}
-                      <line x1="330" y1="660" x2="550" y2="660" />
-                      <line x1="330" y1="700" x2="550" y2="700" />
+                      <line x1="120" y1="180" x2="260" y2="180" />
+                      <line x1="300" y1="180" x2="560" y2="180" />
+                      <line x1="300" y1="680" x2="560" y2="680" />
+                      <line x1="300" y1="720" x2="560" y2="720" />
                     </g>
 
                     {/* Cuts & Boundaries (Solid Lines) */}
-                    {/* BACK FLAP */}
-                    <rect 
-                      x="80" y="160" width="220" height="500" rx="4"
+                    {/* BACK FLAP (With Structural Ribs) */}
+                    <g 
                       className="transition-colors hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Back Cover", "The main back plate of the paper casing. Protects the rear of your iPhone SE.")}
+                      onMouseEnter={() => handlePartHover("Reinforced Back Cover", "The main back plate. Features internal diagonal structural ribs to prevent bowing and support the phone's weight.")}
                       onMouseLeave={handlePartLeave}
-                    />
+                    >
+                      <rect x="120" y="180" width="140" height="500" rx="4" />
+                      <path d="M 120 180 L 80 200 L 80 660 L 120 680 Z" />
+                      
+                      {/* Structural Ribs */}
+                      <g className="stroke-current opacity-30" strokeDasharray="2,2">
+                        <line x1="130" y1="200" x2="250" y2="300" />
+                        <line x1="130" y1="300" x2="250" y2="400" />
+                        <line x1="130" y1="400" x2="250" y2="500" />
+                        <line x1="130" y1="500" x2="250" y2="600" />
+                        <line x1="130" y1="600" x2="250" y2="660" />
+                      </g>
+                      
+                      {/* Rear Camera Cutout */}
+                      <rect x="200" y="200" width="45" height="25" rx="12" className="stroke-[2] hover:stroke-red-500" />
+                      <circle cx="215" cy="212" r="6" />
+                      <circle cx="235" cy="212" r="3" />
+                      <text x="222" y="195" textAnchor="middle" className="text-[6px] font-bold">REAR CAMERA HOLE</text>
+                    </g>
                     
                     {/* LEFT SPINE SIDE */}
-                    <rect 
-                      x="300" y="160" width="30" height="500"
+                    <g 
                       className="transition-colors hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Left Side Strut", "Provides a 7.3mm vertical thickness profile to accommodate the side frame of your phone.")}
+                      onMouseEnter={() => handlePartHover("Left Side Frame", "Provides structural thickness. Contains punch-holes for the volume rockers and mute switch.")}
                       onMouseLeave={handlePartLeave}
-                    />
+                    >
+                      <rect x="260" y="180" width="40" height="500" />
+                      {/* Mute / Volume Buttons */}
+                      <rect x="275" y="240" width="10" height="20" rx="2" className="stroke-red-500/50" />
+                      <circle cx="280" cy="285" r="5" className="stroke-red-500/50" />
+                      <circle cx="280" cy="315" r="5" className="stroke-red-500/50" />
+                      <text x="280" y="340" textAnchor="middle" transform="rotate(-90 280 340)" className="text-[8px] opacity-60 font-bold">VOLUME / MUTE PORT</text>
+                    </g>
 
                     {/* FRONT FLAP */}
-                    <rect 
-                      x="330" y="160" width="220" height="500" rx="4"
+                    <g 
                       className="transition-colors hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Front Shield Cover", "The primary display panel. Houses precise cutout guides for the iPhone SE screen bezel, Touch ID, and speaker grill.")}
+                      onMouseEnter={() => handlePartHover("Precision Front Shield", "The primary display panel. Houses exact guides for the classic 16:9 screen, Touch ID, and front sensors.")}
                       onMouseLeave={handlePartLeave}
-                    />
+                    >
+                      <rect x="300" y="180" width="260" height="500" rx="4" />
+                      
+                      {/* SCREEN VIEWPORT CUTOUT */}
+                      <rect 
+                        x="320" y="250" width="220" height="360" rx="2"
+                        className="stroke-[2.5] hover:fill-[#00ffcc]/10 hover:stroke-[#00ffcc] transition-all cursor-pointer"
+                      />
+                      
+                      {/* IPHONE SE SPEAKER APERTURE & CAMERA */}
+                      <rect x="405" y="215" width="50" height="6" rx="3" className="stroke-[2] hover:fill-red-500/20" />
+                      <circle cx="380" cy="218" r="5" className="stroke-[2] hover:fill-red-500/20" />
+                      <circle cx="430" cy="205" r="3" className="stroke-current opacity-50" />
+                      
+                      {/* TOUCH ID CIRCULAR BEZEL */}
+                      <circle 
+                        cx="430" cy="645" r="18" strokeDasharray="3,3"
+                        className="hover:fill-current/10"
+                      />
+                      <circle cx="430" cy="645" r="14" className="opacity-30" />
+                    </g>
 
                     {/* RIGHT SPINE SIDE */}
-                    <rect 
-                      x="550" y="160" width="30" height="500"
+                    <g 
                       className="transition-colors hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Right Side Strut", "Symmetrical right boundary maintaining correct chassis tension.")}
+                      onMouseEnter={() => handlePartHover("Right Side Frame", "Right chassis boundary. Contains the power button cutout guide.")}
                       onMouseLeave={handlePartLeave}
-                    />
+                    >
+                      <rect x="560" y="180" width="40" height="500" />
+                      <rect x="575" y="280" width="10" height="35" rx="3" className="stroke-red-500/50" />
+                      <text x="580" y="340" textAnchor="middle" transform="rotate(90 580 340)" className="text-[8px] opacity-60 font-bold">POWER BUTTON</text>
+                    </g>
 
                     {/* GLUE FLAP */}
                     <path 
-                      d="M 580 160 L 620 185 L 620 635 L 580 660 Z"
+                      d="M 600 180 L 650 210 L 650 650 L 600 680 Z"
                       className="transition-colors hover:fill-current/10 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Glue Strip Area", "Apply a thin film of glue or paper tape here, then slide it behind the BACK FLAP to securely bind the sleeve.")}
-                      onMouseLeave={handlePartLeave}
-                    />
-
-                    {/* SCREEN VIEWPORT CUTOUT */}
-                    <rect 
-                      x="355" y="275" width="170" height="270" rx="10"
-                      className="stroke-[2.5] hover:fill-[#00ffcc]/10 hover:stroke-[#00ffcc] transition-all cursor-pointer"
-                      onMouseEnter={() => handlePartHover("OLED Screen Cutout", "CUTOUT REQUIRED: Use a cutter knife to excise this inner rectangular container, exposing the companion's animated display.")}
-                      onMouseLeave={handlePartLeave}
-                    />
-
-                    {/* IPHONE SE SPEAKER APERTURE */}
-                    <rect 
-                      x="405" y="215" width="50" height="8" rx="4"
-                      className="stroke-[2] hover:fill-red-500/10 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Earpiece Grill Cutout", "CUTOUT GUIDE: Cut out this pill slot so speaker sounds remain crisp and unmuted.")}
-                      onMouseLeave={handlePartLeave}
-                    />
-
-                    {/* IPHONE SE FRONT CAMERA EYE */}
-                    <circle 
-                      cx="385" cy="219" r="5"
-                      className="stroke-[2] hover:fill-red-500/20 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Front FaceTime Camera Cutout", "CRITICAL CUTOUT: Excise this circle carefully. The camera lens MUST have full visibility to activate the Mediapipe face tracker.")}
-                      onMouseLeave={handlePartLeave}
-                    />
-
-                    {/* TOUCH ID CIRCULAR BEZEL */}
-                    <circle 
-                      cx="440" cy="590" r="15" strokeDasharray="3,3"
-                      className="hover:fill-current/10 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Touch ID Ring Guide", "TOUCH ID MARKER: Alignment reference showing the placement of the classic Home button. Keep this area solid or cut it out for physical access.")}
+                      onMouseEnter={() => handlePartHover("Master Glue Strip", "Apply double-sided tape or strong glue here, then wrap it behind the BACK FLAP to permanently lock the 3D shape.")}
                       onMouseLeave={handlePartLeave}
                     />
 
                     {/* BOTTOM DOCKING FLAP WITH USB ACCESS */}
-                    <path 
-                      d="M 330 660 L 330 700 L 400 700 L 400 680 L 480 680 L 480 700 L 550 700 L 550 660 Z"
-                      className="hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Bottom Flap & Cable Slot", "Secures the bottom edge of the phone. The slot provides convenient pathing for Lightning / USB-C charging cords.")}
+                    <g 
+                      className="transition-colors hover:fill-current/5 cursor-pointer"
+                      onMouseEnter={() => handlePartHover("Base Speaker & Port Plate", "Secures the bottom. Contains precise cutouts for the stereo speakers and Lightning / USB port.")}
                       onMouseLeave={handlePartLeave}
-                    />
+                    >
+                      <path d="M 300 680 L 300 720 L 560 720 L 560 680 Z" />
+                      {/* Port Hole */}
+                      <rect x="400" y="692" width="60" height="16" rx="6" />
+                      {/* Speaker Grills */}
+                      <circle cx="340" cy="700" r="3" />
+                      <circle cx="350" cy="700" r="3" />
+                      <circle cx="360" cy="700" r="3" />
+                      <circle cx="370" cy="700" r="3" />
+                      <circle cx="490" cy="700" r="3" />
+                      <circle cx="500" cy="700" r="3" />
+                      <circle cx="510" cy="700" r="3" />
+                      <circle cx="520" cy="700" r="3" />
+                    </g>
 
-                    {/* Top Dust Caps */}
-                    <path d="M 80 160 L 80 120 L 300 120 L 300 160" />
-                    <path d="M 330 160 L 330 120 L 370 100 L 510 100 L 550 120 L 550 160" />
-
-                    {/* Interactive Highlights */}
-                    {hoveredPart === "Back Cover" && <rect x="80" y="160" width="220" height="500" fill="currentColor" opacity="0.05" pointerEvents="none" />}
-                    {hoveredPart === "Front Shield Cover" && <rect x="330" y="160" width="220" height="500" fill="currentColor" opacity="0.05" pointerEvents="none" />}
+                    {/* Top Dust Caps & Headphone Jack (SE 1st Gen) */}
+                    <g 
+                      className="transition-colors hover:fill-current/5 cursor-pointer"
+                      onMouseEnter={() => handlePartHover("Top Dust Cover", "Seals the top edge. Features a retro 3.5mm headphone jack cutout indicator.")}
+                      onMouseLeave={handlePartLeave}
+                    >
+                      <path d="M 300 180 L 300 140 L 560 140 L 560 180 Z" />
+                      <circle cx="340" cy="160" r="6" className="stroke-red-500/50" />
+                      <text x="340" y="130" textAnchor="middle" className="text-[6px] font-bold">3.5mm JACK</text>
+                      
+                      {/* Corner Tabs */}
+                      <path d="M 260 180 L 260 140 L 300 140 L 300 180 Z" className="opacity-30" />
+                      <path d="M 560 180 L 560 140 L 600 140 L 600 180 Z" className="opacity-30" />
+                    </g>
 
                     {/* Text Annotations inside Blueprint */}
                     <g className="fill-current stroke-none font-bold text-[10px] opacity-75 font-mono">
-                      <text x="190" y="410" textAnchor="middle">BACK PANEL</text>
-                      <text x="440" y="415" textAnchor="middle" className="text-xs">FRONT VIEWPORT</text>
-                      <text x="440" y="300" textAnchor="middle" className="text-[8px] tracking-wider fill-red-500 font-black">CUT OUT INNER WINDOW</text>
-                      <text x="440" y="240" textAnchor="middle" className="text-[8px] fill-red-500 font-bold">CAMERA / SPEAKER CUTS</text>
-                      <text x="440" y="625" textAnchor="middle" className="text-[8px] opacity-60">TOUCH ID GUIDE</text>
-                      <text x="600" y="410" textAnchor="middle" transform="rotate(90, 600, 410)">GLUE FLAP</text>
-                      <text x="440" y="730" textAnchor="middle" className="text-[8px]">CHARGER POWER OUTLET</text>
+                      <text x="190" y="440" textAnchor="middle" className="text-sm">BACK PANEL</text>
+                      <text x="430" y="440" textAnchor="middle" className="text-sm">DISPLAY VIEWPORT</text>
+                      <text x="430" y="380" textAnchor="middle" className="text-[10px] tracking-widest fill-red-500 font-black">EXCISE SCREEN WINDOW</text>
+                      <text x="430" y="240" textAnchor="middle" className="text-[8px] fill-red-500 font-bold">FACETIME CAMERA & EARPIECE</text>
+                      <text x="430" y="620" textAnchor="middle" className="text-[8px] opacity-60">TOUCH ID / HOME BUTTON</text>
+                      <text x="625" y="440" textAnchor="middle" transform="rotate(90, 625, 440)">STRUCTURAL ADHESIVE TAB</text>
+                      <text x="430" y="740" textAnchor="middle" className="text-[8px]">LIGHTNING / USB-C PORT</text>
                     </g>
                   </g>
                 </svg>
