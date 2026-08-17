@@ -14,6 +14,10 @@ interface PetFaceProps {
   };
   micVolume?: number;
   micPitch?: number;
+  speechAmplitude?: number; // 0 to 1 amplitude from Gemini voice output
+  speechPitch?: number;
+  postureAlert?: string | null;
+  aiPersona?: string;
   isCalibrating?: boolean;
   isAsleep?: boolean;
   onWake?: () => void;
@@ -36,6 +40,10 @@ export function PetFace({
   expression, 
   micVolume = 0, 
   micPitch = 0,
+  speechAmplitude = 0,
+  speechPitch = 0,
+  postureAlert = null,
+  aiPersona = 'coach',
   isCalibrating = false, 
   isAsleep = false, 
   onWake,
@@ -307,27 +315,54 @@ export function PetFace({
   }
 
   // Combine speaker state and mouth tracker
-  let mouthAnimate: any = isAsleep
-    ? { height: "8px", width: "12px", borderRadius: "4px" }
-    : isPetting
-      ? { height: ["12px", "20px", "12px"], width: ["28px", "36px", "28px"], borderRadius: "4px 4px 24px 24px" } // Happy smile
-      : isFeeding
-        ? { height: ["12px", "28px", "12px"], width: ["20px", "16px", "20px"], borderRadius: "50%" } // Chewing
-        : isPoked
-          ? { height: "28px", width: "24px", borderRadius: "50%" } // O-shape surprise
-          : isSpeaking
-            ? {
-                height: ["12px", "32px", "16px", "24px"],
-                width: ["24px", "40px", "32px", "36px"],
-                borderRadius: ["8px", "16px", "12px", "20px"],
-              }
-            : isDistracted
-              ? { height: "12px", width: "20px", borderRadius: "12px 12px 4px 4px" } // Sad / disconnected frown
-              : {
-                  height: `${8 + (expression?.mouthOpen ?? 0) * 36 + micVolume * 16}px`,
-                  width: `${24 + (expression?.mouthOpen ?? 0) * 24 + micVolume * 12}px`,
-                  borderRadius: (expression?.mouthOpen ?? 0) > 0.4 || micVolume > 0.2 ? "16px" : "8px",
-                };
+  let mouthAnimate: any;
+  
+  if (isAsleep) {
+    mouthAnimate = { height: "8px", width: "12px", borderRadius: "4px" };
+  } else if (isPetting) {
+    mouthAnimate = { height: ["12px", "20px", "12px"], width: ["28px", "36px", "28px"], borderRadius: "4px 4px 24px 24px" };
+  } else if (isFeeding) {
+    mouthAnimate = { height: ["12px", "28px", "12px"], width: ["20px", "16px", "20px"], borderRadius: "50%" };
+  } else if (isPoked) {
+    mouthAnimate = { height: "28px", width: "24px", borderRadius: "50%" };
+  } else if (isSpeaking) {
+    if (speechAmplitude > 0.03) {
+      // Direct real-time audio FFT spectral viseme modulation
+      const targetHeight = Math.max(10, Math.min(42, Math.round(8 + speechAmplitude * 45)));
+      const targetWidth = Math.max(22, Math.min(48, Math.round(22 + speechAmplitude * 30)));
+      const targetRadius = speechAmplitude > 0.55 
+        ? "50% 50% 14px 14px" // Open vowel (A, O)
+        : speechAmplitude > 0.25 
+          ? "6px" // Syllable mid-vowel (E, I)
+          : "4px"; // Soft consonant (M, P, S)
+      mouthAnimate = {
+        height: `${targetHeight}px`,
+        width: `${targetWidth}px`,
+        borderRadius: targetRadius,
+      };
+    } else {
+      // Procedural talking cadence fallback when amplitude is silent between words
+      mouthAnimate = {
+        height: ["12px", "32px", "16px", "24px"],
+        width: ["24px", "40px", "32px", "36px"],
+        borderRadius: ["8px", "16px", "12px", "20px"],
+      };
+    }
+  } else if (isDistracted) {
+    mouthAnimate = { height: "12px", width: "20px", borderRadius: "12px 12px 4px 4px" };
+  } else {
+    mouthAnimate = {
+      height: `${8 + (expression?.mouthOpen ?? 0) * 36 + micVolume * 16}px`,
+      width: `${24 + (expression?.mouthOpen ?? 0) * 24 + micVolume * 12}px`,
+      borderRadius: (expression?.mouthOpen ?? 0) > 0.4 || micVolume > 0.2 ? "16px" : "8px",
+    };
+  }
+
+  // Audio-reactive eye dilation while AI is speaking
+  if (isSpeaking && !isAsleep && !isBlinking) {
+    leftEyeScaleY = Math.min(1.35, leftEyeScaleY + speechAmplitude * 0.25);
+    rightEyeScaleY = Math.min(1.35, rightEyeScaleY + speechAmplitude * 0.25);
+  }
 
   if (character === 'kawaii') {
     if (typeof mouthAnimate.borderRadius === 'string' && !isSpeaking && !isFeeding && !isPoked && !isAsleep) {
@@ -512,7 +547,7 @@ export function PetFace({
           >
             <div className="flex items-center space-x-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-[#ffcc00] animate-pulse shadow-[0_0_4px_#ffcc00]" />
-              <span className="font-bold">I2C: 0x3C</span>
+              <span className="font-bold uppercase tracking-tight">ROLE: {aiPersona}</span>
             </div>
             <div className="flex items-center space-x-3 text-[7px] opacity-90">
               <span>FPS: {(56.8 + Math.sin(Date.now() / 1000) * 1.5).toFixed(1)}</span>
@@ -526,13 +561,26 @@ export function PetFace({
             className="w-full flex items-center justify-between px-4 py-1.5 text-[7px] font-mono select-none shrink-0" 
             style={{ color: currentTheme, textShadow: glowShadow, opacity: 0.6 }}
           >
-            <span className="font-semibold uppercase">MONO_OLED_0.96</span>
-            <span className="text-[6px] tracking-widest">{isAsleep ? 'SLEEP_OK' : 'ACTIVE_OK'}</span>
+            <span className="font-semibold uppercase">ROLE: {aiPersona}</span>
+            <span className="text-[6px] tracking-widest">{isAsleep ? 'SLEEP_OK' : isSpeaking ? 'VOICE_TX' : 'ACTIVE_OK'}</span>
           </div>
         )}
 
         {/* Active Display Surface */}
         <div className="flex-1 flex items-center justify-center relative overflow-hidden bg-black/40">
+          {/* Posture / Focus Alert HUD Banner */}
+          {postureAlert && (
+            <motion.div 
+              initial={{ y: -20, opacity: 0 }}
+              animate={{ y: 0, opacity: [1, 0.4, 1] }}
+              transition={{ opacity: { repeat: Infinity, duration: 0.8 }, y: { type: "spring", stiffness: 500, damping: 25 } }}
+              className="absolute top-2 left-4 right-4 z-30 bg-red-950/80 border border-red-500/80 text-red-300 text-[8px] font-mono font-bold tracking-wider text-center py-1 px-2 rounded-sm shadow-[0_0_12px_rgba(239,68,68,0.4)] backdrop-blur-xs flex items-center justify-center space-x-1.5 uppercase"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />
+              <span>{postureAlert}</span>
+            </motion.div>
+          )}
+
           <motion.div animate={breathingAnimate} transition={breathingTransition} className="flex flex-col items-center relative scale-[0.82]">
             {isAsleep && (
               <motion.div 

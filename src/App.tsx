@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { PetFace } from './components/PetFace';
 import { PaperTemplate } from './components/PaperTemplate';
+import { DeskHabits } from './components/DeskHabits';
 import { pcmToBase64, base64ToPcm } from './lib/audio';
 
 declare const FaceMesh: any;
@@ -11,6 +12,10 @@ interface LogEntry {
   type: 'info' | 'success' | 'warn' | 'error';
 }
 
+export type AiPersonaType = 'coach' | 'cozy' | 'butler' | 'cyber' | 'tamagotchi';
+export type AiLanguageType = 'sv' | 'en' | 'ja' | 'es' | 'de' | 'fr';
+export type AiVoiceType = 'Puck' | 'Aoede' | 'Charon' | 'Fenrir' | 'Kore';
+
 export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -19,6 +24,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [appState, setAppState] = useState<'idle' | 'calibrating' | 'running'>('idle');
   const [showTemplate, setShowTemplate] = useState(false);
+  const [showDeskHabits, setShowDeskHabits] = useState(false);
   const [trackerMode, setTrackerMode] = useState<'mediapipe' | 'fallback'>('mediapipe');
   const [showMonitor, setShowMonitor] = useState(true);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -28,6 +34,25 @@ export default function App() {
   const lastActiveRef = useRef<number>(Date.now());
   const isAsleepRef = useRef(false);
   const isSpeakingRef = useRef(false);
+
+  // Intelligent Companion Persona & Language Matrix
+  const [aiPersona, setAiPersona] = useState<AiPersonaType>('coach');
+  const [aiLanguage, setAiLanguage] = useState<AiLanguageType>('sv');
+  const [aiVoice, setAiVoice] = useState<AiVoiceType>('Puck');
+
+  // Audio-Reactive Lip Sync FFT states
+  const [speechAmplitude, setSpeechAmplitude] = useState<number>(0);
+  const outputAnalyserRef = useRef<AnalyserNode | null>(null);
+
+  // Smart Focus & Posture Sentinel
+  const [postureSentinelEnabled, setPostureSentinelEnabled] = useState<boolean>(true);
+  const [postureAlert, setPostureAlert] = useState<string | null>(null);
+  const baselineNoseYRef = useRef<number | null>(null);
+  const slouchStartTimeRef = useRef<number | null>(null);
+  const distractedStartTimeRef = useRef<number | null>(null);
+  const [focusSprintActive, setFocusSprintActive] = useState<boolean>(false);
+  const [focusSprintSeconds, setFocusSprintSeconds] = useState<number>(25 * 60);
+  const [focusScore, setFocusScore] = useState<number>(100);
 
   // OLED Screen Config States
   const [oledTheme, setOledTheme] = useState<'split' | 'cyan' | 'amber' | 'green' | 'white' | 'dynamic'>('split');
@@ -66,6 +91,43 @@ export default function App() {
 
   const [uiLookOffset, setUiLookOffset] = useState<{x: number, y: number} | null>(null);
   const uiLookTimerRef = useRef<any>(null);
+
+  // Focus sprint timer countdown
+  useEffect(() => {
+    if (!focusSprintActive) return;
+    const interval = setInterval(() => {
+      setFocusSprintSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setFocusSprintActive(false);
+          addLog("🎉 Focus Sprint Completed! Great job maintaining discipline.", "success");
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            navigator.vibrate([100, 50, 100, 50, 200]);
+          }
+          return 25 * 60;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [focusSprintActive]);
+
+  // Send reconfiguration to WebSocket
+  const updateCompanionConfig = (newPersona?: AiPersonaType, newLang?: AiLanguageType, newVoice?: AiVoiceType) => {
+    const p = newPersona || aiPersona;
+    const l = newLang || aiLanguage;
+    const v = newVoice || aiVoice;
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'config',
+        persona: p,
+        language: l,
+        voice: v,
+      }));
+      addLog(`Soul matrix updated: [Role: ${p.toUpperCase()}] [Lang: ${l.toUpperCase()}] [Voice: ${v}]`, 'success');
+    }
+  };
 
   useEffect(() => {
     const handleFocus = (e: FocusEvent) => {
@@ -299,12 +361,38 @@ export default function App() {
       addLog("Awakening the Paper Pet...", "info");
       addLog("Entering calibration phase (3s). Please place device in stand...", "warn");
 
-      // 2. Setup Audio Contexts
-      addLog("Initializing audio systems (16kHz PCM duplex)...", "info");
+      // 2. Setup Audio Contexts & Output Analyser
+      addLog("Initializing audio systems (16kHz input / 24kHz output duplex)...", "info");
       const inputAudioCtx = new AudioContext({ sampleRate: 16000 });
       const outputAudioCtx = new AudioContext({ sampleRate: 24000 });
       inputAudioCtxRef.current = inputAudioCtx;
       outputAudioCtxRef.current = outputAudioCtx;
+
+      // Create Analyser for real-time AI speech lip-sync visemes
+      const outputAnalyser = outputAudioCtx.createAnalyser();
+      outputAnalyser.fftSize = 128;
+      outputAnalyser.smoothingTimeConstant = 0.35;
+      outputAnalyser.connect(outputAudioCtx.destination);
+      outputAnalyserRef.current = outputAnalyser;
+
+      // Real-time animation loop for AI speech output
+      const speechFreqArray = new Uint8Array(outputAnalyser.frequencyBinCount);
+      const checkSpeechFFT = () => {
+        if (outputAnalyserRef.current && isSpeakingRef.current) {
+          outputAnalyserRef.current.getByteFrequencyData(speechFreqArray);
+          let sum = 0;
+          for (let i = 0; i < speechFreqArray.length; i++) {
+            sum += speechFreqArray[i];
+          }
+          const avg = sum / speechFreqArray.length;
+          const amp = Math.min(1, avg / 48);
+          setSpeechAmplitude(amp);
+        } else {
+          setSpeechAmplitude(0);
+        }
+        requestAnimationFrame(checkSpeechFFT);
+      };
+      checkSpeechFFT();
 
       // 3. Get Media Stream (Audio + Video)
       addLog("Requesting front-facing camera & microphone access...", "info");
@@ -413,12 +501,19 @@ export default function App() {
           ws.onopen = () => {
             setIsConnected(true);
             addLog("Connected to Gemini Live Agent soul.", "success");
+            // Send initial persona & language configuration
+            ws.send(JSON.stringify({
+              type: 'init',
+              persona: aiPersona,
+              language: aiLanguage,
+              voice: aiVoice,
+            }));
           };
 
           ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             if (msg.connected) {
-               addLog("OLED Interface synced with Gemini.", "success");
+               addLog(`Companion Soul Matrix synced [Role: ${msg.persona?.toUpperCase() || aiPersona.toUpperCase()}]`, "success");
             }
             if (msg.audio) {
               setIsSpeaking(true);
@@ -507,11 +602,51 @@ export default function App() {
               const face = results.multiFaceLandmarks[0];
               const nose = face[4]; // nose tip
               
-              // invert X because front camera is mirrored
+              // Calibrate baseline nose posture if not yet established
+              if (baselineNoseYRef.current === null) {
+                baselineNoseYRef.current = nose.y;
+                addLog(`Posture Sentinel calibrated baseline height [Y: ${nose.y.toFixed(3)}]`, "info");
+              }
+
+              // Invert X because front camera is mirrored
               const offsetX = (nose.x - 0.5) * 60; 
               const offsetY = (nose.y - 0.5) * 30;
               setLookOffset({ x: -offsetX, y: offsetY }); 
               setIsDistracted(false);
+
+              // Smart Posture Sentinel logic
+              if (postureSentinelEnabled && baselineNoseYRef.current !== null) {
+                const slouchThreshold = baselineNoseYRef.current + 0.075;
+                if (nose.y > slouchThreshold) {
+                  if (!slouchStartTimeRef.current) slouchStartTimeRef.current = Date.now();
+                  if (Date.now() - slouchStartTimeRef.current > 3000) {
+                    setPostureAlert("POSTURE: SLOUCH DETECTED - SIT TALL");
+                    setFocusScore((s) => Math.max(40, s - 0.1));
+                  }
+                } else {
+                  slouchStartTimeRef.current = null;
+                  if (postureAlert?.includes("SLOUCH")) {
+                    setPostureAlert(null);
+                    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                      navigator.vibrate(20);
+                    }
+                  }
+                }
+
+                // Check prolonged distraction / looking away (>22px sideways)
+                if (Math.abs(offsetX) > 22) {
+                  if (!distractedStartTimeRef.current) distractedStartTimeRef.current = Date.now();
+                  if (Date.now() - distractedStartTimeRef.current > 5000) {
+                    setPostureAlert("FOCUS CHECK: EYES ON DESK");
+                    setFocusScore((s) => Math.max(30, s - 0.2));
+                  }
+                } else {
+                  distractedStartTimeRef.current = null;
+                  if (postureAlert?.includes("FOCUS CHECK")) {
+                    setPostureAlert(null);
+                  }
+                }
+              }
 
               // Head Nod Gesture Listener (rapid change in y-axis)
               const nowMs = performance.now();
@@ -710,7 +845,13 @@ export default function App() {
       
       const source = audioCtx.createBufferSource();
       source.buffer = buffer;
-      source.connect(audioCtx.destination);
+      
+      // Connect to outputAnalyser for live lip-sync FFT analysis
+      if (outputAnalyserRef.current) {
+        source.connect(outputAnalyserRef.current);
+      } else {
+        source.connect(audioCtx.destination);
+      }
       
       const currentTime = audioCtx.currentTime;
       if (nextStartTimeRef.current < currentTime) {
@@ -731,6 +872,12 @@ export default function App() {
     }
   };
 
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
   return (
     <div className="w-screen h-screen bg-black text-[#00ffcc] font-mono overflow-hidden relative flex flex-col md:flex-row">
       {showTemplate && <PaperTemplate onClose={() => setShowTemplate(false)} />}
@@ -742,22 +889,90 @@ export default function App() {
 
       {appState === 'idle' ? (
         <div className="flex-1 flex flex-col items-center justify-center space-y-6 px-4">
+           <div className="w-16 h-16 rounded-xl border-2 border-[#00ffcc] flex items-center justify-center shadow-[0_0_25px_#00ffcc] bg-[#00ffcc]/10">
+              <span className="text-3xl animate-pulse">🤖</span>
+           </div>
            <h1 className="text-4xl tracking-wider uppercase font-bold text-center glow-text text-shadow">Antonio's Paper Pet</h1>
            <p className="text-center max-w-md opacity-80 text-sm leading-relaxed">
-              An intelligent, multi-platform spatial companion. It uses your device camera to track your posture, and Gemini to awaken its soul.
+              An intelligent multimodal desk companion. Powered by Gemini Live, real-time spatial computer vision, and procedural 8-bit lip sync.
            </p>
+
+           {/* Pre-launch Persona & Language Picker */}
+           <div className="w-full max-w-md bg-zinc-950 border border-[#00ffcc]/30 p-4 rounded-sm space-y-3">
+             <div className="flex items-center justify-between text-xs uppercase font-bold text-[#00ffcc]/90">
+               <span>Companion Role Matrix</span>
+               <span className="text-[10px] text-gray-400">Step 1 Activated</span>
+             </div>
+             
+             <div className="grid grid-cols-3 gap-1.5 text-[10px]">
+               {[
+                 { id: 'coach', label: '🎓 Coach', desc: 'Focus & Sprints' },
+                 { id: 'cozy', label: '☕ Cozy', desc: 'Warm & Calming' },
+                 { id: 'butler', label: '🎩 Butler', desc: 'Witty & Sharp' },
+                 { id: 'cyber', label: '⚡ Cyber', desc: 'Matrix Core' },
+                 { id: 'tamagotchi', label: '🐾 Pet', desc: 'Cheer & Play' },
+               ].map((p) => (
+                 <button
+                   key={p.id}
+                   onClick={() => setAiPersona(p.id as any)}
+                   className={`p-2 rounded-sm border text-left transition-all ${
+                     aiPersona === p.id 
+                       ? 'bg-[#00ffcc] text-black border-[#00ffcc] font-bold shadow-[0_0_10px_rgba(0,255,204,0.4)]' 
+                       : 'bg-black/60 border-zinc-800 text-gray-400 hover:border-[#00ffcc]/50 hover:text-white'
+                   }`}
+                 >
+                   <div className="font-bold">{p.label}</div>
+                   <div className={`text-[8px] ${aiPersona === p.id ? 'text-black/80' : 'text-gray-500'}`}>{p.desc}</div>
+                 </button>
+               ))}
+             </div>
+
+             <div className="flex items-center justify-between pt-2 border-t border-zinc-800 text-[10px]">
+               <span className="text-gray-400 uppercase">Spoken Tongue:</span>
+               <div className="flex space-x-1">
+                 {[
+                   { id: 'sv', label: '🇸🇪 SV' },
+                   { id: 'en', label: '🇬🇧 EN' },
+                   { id: 'ja', label: '🇯🇵 JA' },
+                   { id: 'es', label: '🇪🇸 ES' },
+                   { id: 'de', label: '🇩🇪 DE' },
+                   { id: 'fr', label: '🇫🇷 FR' },
+                 ].map((lang) => (
+                   <button
+                     key={lang.id}
+                     onClick={() => setAiLanguage(lang.id as any)}
+                     className={`px-2 py-1 rounded-xs border text-[9px] font-bold transition-all ${
+                       aiLanguage === lang.id
+                         ? 'bg-[#00ffcc] text-black border-[#00ffcc]'
+                         : 'bg-zinc-900 border-zinc-700 text-gray-400 hover:text-[#00ffcc]'
+                     }`}
+                   >
+                     {lang.label}
+                   </button>
+                 ))}
+               </div>
+             </div>
+           </div>
+
            <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mt-8 w-full max-w-md">
              <button 
                onClick={startApp}
-               className="flex-1 px-8 py-4 bg-[#00ffcc] text-black uppercase font-bold tracking-widest hover:bg-opacity-90 transition-all rounded-sm shadow-[0_0_20px_#00ffcc]"
+               className="flex-1 px-6 py-4 bg-[#00ffcc] text-black uppercase font-bold tracking-widest hover:bg-opacity-90 transition-all rounded-sm shadow-[0_0_20px_#00ffcc]"
              >
                Awaken Pet
              </button>
              <button 
                onClick={() => setShowTemplate(true)}
-               className="flex-1 px-8 py-4 border-2 border-[#00ffcc] text-[#00ffcc] uppercase font-bold tracking-widest hover:bg-[#00ffcc] hover:text-black hover:shadow-[0_0_20px_#00ffcc] transition-all rounded-sm"
+               className="flex-1 px-6 py-4 border-2 border-[#00ffcc] text-[#00ffcc] uppercase font-bold tracking-widest hover:bg-[#00ffcc] hover:text-black hover:shadow-[0_0_20px_#00ffcc] transition-all rounded-sm"
              >
                Paper Model
+             </button>
+             <button 
+               onClick={() => setShowDeskHabits(true)}
+               className="px-4 py-4 border-2 border-amber-400/80 text-amber-300 uppercase font-bold tracking-widest hover:bg-amber-400 hover:text-black hover:shadow-[0_0_20px_rgba(251,191,36,0.6)] transition-all rounded-sm"
+               title="Desk wellness & companion care suite"
+             >
+               Care
              </button>
            </div>
            {error && <p className="text-red-500 text-sm mt-4 text-center max-w-md">{error}</p>}
@@ -769,11 +984,17 @@ export default function App() {
              {/* Connection Status Indicator */}
              <div className="absolute top-6 left-6 flex items-center space-x-3 opacity-80 z-10">
                 <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-[#00ffcc] shadow-[0_0_10px_#00ffcc]' : appState === 'calibrating' ? 'bg-yellow-500 shadow-[0_0_10px_yellow]' : 'bg-red-500 shadow-[0_0_10px_red]'}`} />
-                <span className="text-xs tracking-widest uppercase font-bold">{isConnected ? 'System Online' : appState === 'calibrating' ? 'Calibrating...' : 'Connecting Soul...'}</span>
+                <span className="text-xs tracking-widest uppercase font-bold">{isConnected ? `Soul: ${aiPersona.toUpperCase()}` : appState === 'calibrating' ? 'Calibrating Posture...' : 'Connecting Soul...'}</span>
              </div>
 
-             {/* Dynamic Mode Switcher */}
+             {/* Dynamic Mode Switcher & Sprint indicator */}
              <div className="absolute top-6 right-6 flex items-center space-x-2 z-10">
+                {focusSprintActive && (
+                  <div className="px-3 py-1 text-[10px] uppercase bg-amber-500/20 border border-amber-500 text-amber-300 rounded-sm font-bold animate-pulse flex items-center space-x-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    <span>SPRINT: {formatTime(focusSprintSeconds)}</span>
+                  </div>
+                )}
                 <button 
                   onClick={() => {
                     const nextMode = trackerMode === 'mediapipe' ? 'fallback' : 'mediapipe';
@@ -790,8 +1011,9 @@ export default function App() {
              {/* The Pet Face */}
              <div className="flex-1 flex items-center justify-center relative">
                 {appState === 'calibrating' && (
-                  <div className="absolute top-1/3 text-[#00ffcc] font-bold tracking-widest uppercase animate-pulse opacity-50 z-10">
-                    Calibration Phase... Place in Stand
+                  <div className="absolute top-1/3 text-[#00ffcc] font-bold tracking-widest uppercase animate-pulse opacity-75 z-10 text-center">
+                    <div>Calibration Phase...</div>
+                    <div className="text-[10px] text-gray-400 mt-1">Sit upright to calibrate posture sentinel</div>
                   </div>
                 )}
                 <PetFace 
@@ -801,6 +1023,9 @@ export default function App() {
                   expression={expression} 
                   micVolume={micVolume}
                   micPitch={micPitch}
+                  speechAmplitude={speechAmplitude}
+                  postureAlert={postureAlert}
+                  aiPersona={aiPersona}
                   isCalibrating={appState === 'calibrating'}
                   isAsleep={isAsleep}
                   onWake={() => {
@@ -824,16 +1049,18 @@ export default function App() {
              
              {/* Dynamic Status bar */}
              <div className="absolute bottom-6 left-6 right-6 flex justify-between items-center opacity-75 text-xs uppercase tracking-widest">
-                <span>[X: {lookOffset.x.toFixed(0)} | Y: {lookOffset.y.toFixed(0)}]</span>
-                <span>{isSpeaking ? '● Pet Speaking' : isDistracted ? '💤 Resting (No face)' : '⚡ Active watching'}</span>
+                <span>[X: {lookOffset.x.toFixed(0)} | Y: {lookOffset.y.toFixed(0)}] {postureAlert ? `| ⚠️ ${postureAlert}` : ''}</span>
+                <span>{isSpeaking ? `● Speaking [${Math.round(speechAmplitude * 100)}% FFT]` : isDistracted ? '💤 Resting (No face)' : '⚡ Active watching'}</span>
              </div>
           </div>
 
           {/* Right-side Control and Debug Deck */}
-          <div className={`w-full md:w-80 border-t md:border-t-0 md:border-l border-[#00ffcc]/20 p-6 flex flex-col h-1/3 md:h-full justify-between overflow-y-auto transition-all duration-700 ${isNightTime || (ambientLight !== null && ambientLight < 45) ? 'bg-black text-slate-400' : 'bg-zinc-950'}`}>
-             <div className="space-y-6">
+          <div className={`w-full md:w-88 border-t md:border-t-0 md:border-l border-[#00ffcc]/20 p-5 flex flex-col h-1/3 md:h-full justify-between overflow-y-auto transition-all duration-700 ${isNightTime || (ambientLight !== null && ambientLight < 45) ? 'bg-black text-slate-400' : 'bg-zinc-950'}`}>
+             <div className="space-y-5">
                 <div className="flex justify-between items-center">
-                  <h3 className="text-sm font-bold tracking-widest uppercase text-[#00ffcc]">Control Deck</h3>
+                  <h3 className="text-sm font-bold tracking-widest uppercase text-[#00ffcc] flex items-center space-x-2">
+                    <span>Soul & Vision Deck</span>
+                  </h3>
                   <button 
                     onClick={() => setShowMonitor(!showMonitor)}
                     className="text-[10px] uppercase underline text-gray-400 hover:text-[#00ffcc]"
@@ -842,7 +1069,7 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Simulated OLED viewport / Camera Monitor */}
+                {/* Camera Monitor */}
                 {showMonitor && (
                    <div className="relative aspect-video w-full bg-black border border-[#00ffcc]/20 rounded-sm overflow-hidden flex items-center justify-center">
                       <div className="absolute inset-0 bg-[#00ffcc]/5 pointer-events-none z-10 scanline-effect" />
@@ -859,22 +1086,175 @@ export default function App() {
                         className="w-full h-full object-cover opacity-50 grayscale contrast-150 scale-x-[-1]" 
                       />
                       <div className="absolute bottom-2 left-2 text-[10px] font-mono tracking-wider text-[#00ffcc] bg-black/80 px-2 py-0.5 rounded-sm">
-                         CAM FEED
+                         VISION LINK (1 FPS TX)
                       </div>
                       
-                      {/* Laser scanning marker */}
                       <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#00ffcc]/60 shadow-[0_0_8px_#00ffcc] animate-bounce" />
                    </div>
                 )}
 
+                {/* Companion Soul & Persona Switcher */}
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[10px] font-bold tracking-widest uppercase text-[#00ffcc]/80">AI Persona Matrix</h4>
+                    <span className="text-[8px] text-amber-400 uppercase font-mono">Real-time Live API</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-1">
+                    {[
+                      { id: 'coach', label: '🎓 Coach' },
+                      { id: 'cozy', label: '☕ Cozy' },
+                      { id: 'butler', label: '🎩 Butler' },
+                      { id: 'cyber', label: '⚡ Cyber' },
+                      { id: 'tamagotchi', label: '🐾 Pet' },
+                    ].map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => {
+                          setAiPersona(p.id as any);
+                          updateCompanionConfig(p.id as any, aiLanguage, aiVoice);
+                        }}
+                        className={`px-1.5 py-1 text-[8px] uppercase tracking-wider rounded-sm border transition-all text-center
+                          ${aiPersona === p.id 
+                            ? 'bg-[#00ffcc] text-black border-[#00ffcc] font-bold shadow-[0_0_8px_rgba(0,255,204,0.3)]' 
+                            : 'bg-transparent border-[#00ffcc]/20 text-gray-400 hover:border-[#00ffcc]/50 hover:text-[#00ffcc]'
+                          }
+                        `}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Language Selector */}
+                  <div className="pt-1.5 flex items-center justify-between text-[8px]">
+                    <span className="text-gray-400 uppercase">Companion Language:</span>
+                    <div className="flex space-x-1">
+                      {[
+                        { id: 'sv', label: '🇸🇪' },
+                        { id: 'en', label: '🇬🇧' },
+                        { id: 'ja', label: '🇯🇵' },
+                        { id: 'es', label: '🇪🇸' },
+                        { id: 'de', label: '🇩🇪' },
+                        { id: 'fr', label: '🇫🇷' },
+                      ].map((lang) => (
+                        <button
+                          key={lang.id}
+                          onClick={() => {
+                            setAiLanguage(lang.id as any);
+                            updateCompanionConfig(aiPersona, lang.id as any, aiVoice);
+                          }}
+                          className={`px-1.5 py-0.5 rounded-xs border text-[8px] transition-all ${
+                            aiLanguage === lang.id
+                              ? 'bg-[#00ffcc] text-black border-[#00ffcc] font-bold'
+                              : 'bg-zinc-900 border-zinc-700 text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          {lang.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Voice Synthesis Selector */}
+                  <div className="pt-1 flex items-center justify-between text-[8px]">
+                    <span className="text-gray-400 uppercase">Voice Timbre:</span>
+                    <div className="flex space-x-1">
+                      {[
+                        { id: 'Puck', label: 'Puck' },
+                        { id: 'Aoede', label: 'Aoede' },
+                        { id: 'Charon', label: 'Charon' },
+                        { id: 'Fenrir', label: 'Fenrir' },
+                        { id: 'Kore', label: 'Kore' },
+                      ].map((v) => (
+                        <button
+                          key={v.id}
+                          onClick={() => {
+                            setAiVoice(v.id as any);
+                            updateCompanionConfig(aiPersona, aiLanguage, v.id as any);
+                          }}
+                          className={`px-1.5 py-0.5 rounded-xs border text-[7px] font-bold uppercase transition-all ${
+                            aiVoice === v.id
+                              ? 'bg-[#00ffcc] text-black border-[#00ffcc]'
+                              : 'bg-zinc-900 border-zinc-700 text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          {v.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Smart Focus & Posture Sentinel */}
+                <div className="space-y-2 pt-2 border-t border-[#00ffcc]/10">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[10px] font-bold tracking-widest uppercase text-[#00ffcc]/80">Focus & Posture Sentinel</h4>
+                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-xs uppercase ${postureAlert ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'bg-green-500/20 text-green-400'}`}>
+                      {postureAlert ? 'Alert Active' : 'Sentinel OK'}
+                    </span>
+                  </div>
+
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => {
+                        setFocusSprintActive(!focusSprintActive);
+                        if (!focusSprintActive) {
+                          setFocusSprintSeconds(25 * 60);
+                          addLog("Started 25-minute Deep Focus Sprint!", "success");
+                        } else {
+                          addLog("Focus Sprint cancelled.", "warn");
+                        }
+                      }}
+                      className={`flex-1 py-1.5 px-2 text-[9px] font-bold uppercase rounded-sm border transition-all text-center ${
+                        focusSprintActive 
+                          ? 'bg-amber-500 text-black border-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.4)]' 
+                          : 'bg-zinc-900 border-[#00ffcc]/30 text-[#00ffcc] hover:bg-[#00ffcc]/10'
+                      }`}
+                    >
+                      {focusSprintActive ? `Sprint: ${formatTime(focusSprintSeconds)} (Stop)` : '⏱️ Start 25m Focus Sprint'}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        baselineNoseYRef.current = null;
+                        addLog("Recalibrating Posture Baseline height...", "info");
+                        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                          navigator.vibrate([15, 30]);
+                        }
+                      }}
+                      className="px-2.5 py-1.5 text-[8px] uppercase border border-zinc-700 bg-zinc-900 hover:border-[#00ffcc] text-gray-300 rounded-sm"
+                    >
+                      Calibrate
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[8px] text-gray-300 pt-1">
+                    <label className="flex items-center space-x-1.5 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={postureSentinelEnabled} 
+                        onChange={(e) => setPostureSentinelEnabled(e.target.checked)}
+                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] accent-[#00ffcc]"
+                      />
+                      <span>Posture Sentinel</span>
+                    </label>
+
+                    <div className="flex items-center justify-between bg-zinc-900/60 px-2 py-0.5 rounded-sm border border-zinc-800">
+                      <span className="text-gray-500 uppercase">Focus Score</span>
+                      <span className="font-bold text-[#00ffcc]">{Math.round(focusScore)}%</span>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Telemetry data */}
-                <div className="grid grid-cols-2 gap-4 text-[10px] border-t border-b border-[#00ffcc]/10 py-4">
+                <div className="grid grid-cols-2 gap-3 text-[9px] border-t border-b border-[#00ffcc]/10 py-3">
                    <div>
-                     <span className="block opacity-50">SOUl LINK:</span>
-                     <span className="font-bold text-white">{isConnected ? 'CONNECTED' : 'DISCONNECTED'}</span>
+                     <span className="block opacity-50">LIP-SYNC FFT:</span>
+                     <span className="font-bold text-white">{isSpeaking ? `${(speechAmplitude * 100).toFixed(0)}% (Active)` : 'IDLE'}</span>
                    </div>
                    <div>
-                     <span className="block opacity-50">EYE SYNC:</span>
+                     <span className="block opacity-50">EYE TRACK:</span>
                      <span className="font-bold text-white">{(lookOffset.x !== 0 || lookOffset.y !== 0) ? 'ACTIVE' : 'IDLE'}</span>
                    </div>
                    <div>
@@ -888,12 +1268,12 @@ export default function App() {
                 </div>
 
                 {/* OLED Hardware Customizer */}
-                <div className="space-y-4 pt-2">
+                <div className="space-y-3 pt-1">
                   <h4 className="text-[10px] font-bold tracking-widest uppercase text-[#00ffcc]/80">OLED Screen Config</h4>
                   
                   {/* Character Preset Selector */}
-                  <div className="space-y-1.5">
-                    <span className="text-[8px] text-gray-400 uppercase tracking-wider block">Personality Type</span>
+                  <div className="space-y-1">
+                    <span className="text-[8px] text-gray-400 uppercase tracking-wider block">Personality Style</span>
                     <div className="grid grid-cols-3 gap-1">
                       {[
                         { id: 'classic', label: 'Classic' },
@@ -920,11 +1300,11 @@ export default function App() {
                   </div>
 
                   {/* Color Preset Selector */}
-                  <div className="space-y-1.5">
+                  <div className="space-y-1">
                     <span className="text-[8px] text-gray-400 uppercase tracking-wider block">Color Spectrum</span>
                     <div className="grid grid-cols-3 gap-1">
                       {[
-                        { id: 'dynamic', label: 'Dynamic Mood' },
+                        { id: 'dynamic', label: 'Dynamic' },
                         { id: 'split', label: 'Split Y/B' },
                         { id: 'cyan', label: 'Cyan' },
                         { id: 'amber', label: 'Amber' },
@@ -964,95 +1344,54 @@ export default function App() {
                   </div>
 
                   {/* Hardware Toggles */}
-                  <div className="space-y-2 pt-1 text-[8px] text-gray-300">
-                    <label className="flex items-center space-x-2 cursor-pointer group">
+                  <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[8px] text-gray-300">
+                    <label className="flex items-center space-x-1.5 cursor-pointer">
                       <input 
                         type="checkbox" 
                         checked={showPCB} 
                         onChange={(e) => setShowPCB(e.target.checked)}
-                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] focus:ring-0 cursor-pointer accent-[#00ffcc]"
+                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] accent-[#00ffcc]"
                       />
-                      <span className="group-hover:text-white uppercase tracking-wider">Physical PCB Base</span>
+                      <span>PCB Base</span>
                     </label>
 
-                    <label className="flex items-center space-x-2 cursor-pointer group">
+                    <label className="flex items-center space-x-1.5 cursor-pointer">
                       <input 
                         type="checkbox" 
                         checked={pixelGrid} 
                         onChange={(e) => setPixelGrid(e.target.checked)}
-                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] focus:ring-0 cursor-pointer accent-[#00ffcc]"
+                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] accent-[#00ffcc]"
                       />
-                      <span className="group-hover:text-white uppercase tracking-wider">Subpixel Dot-Matrix</span>
+                      <span>Dot Matrix</span>
                     </label>
 
-                    <label className="flex items-center space-x-2 cursor-pointer group">
+                    <label className="flex items-center space-x-1.5 cursor-pointer">
                       <input 
                         type="checkbox" 
                         checked={glassShine} 
                         onChange={(e) => setGlassShine(e.target.checked)}
-                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] focus:ring-0 cursor-pointer accent-[#00ffcc]"
+                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] accent-[#00ffcc]"
                       />
-                      <span className="group-hover:text-white uppercase tracking-wider">Gloss Glass Glare</span>
+                      <span>Glass Glare</span>
                     </label>
 
-                    <label className="flex items-center space-x-2 cursor-pointer group">
+                    <label className="flex items-center space-x-1.5 cursor-pointer">
                       <input 
                         type="checkbox" 
                         checked={screenFlicker} 
                         onChange={(e) => setScreenFlicker(e.target.checked)}
-                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] focus:ring-0 cursor-pointer accent-[#00ffcc]"
+                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] accent-[#00ffcc]"
                       />
-                      <span className="group-hover:text-white uppercase tracking-wider">Camera Refresh Flicker</span>
+                      <span>Flicker FX</span>
                     </label>
-
-                    <label className="flex items-center space-x-2 cursor-pointer group">
-                      <input 
-                        type="checkbox" 
-                        checked={autoAmbient} 
-                        onChange={(e) => {
-                          setAutoAmbient(e.target.checked);
-                          if (e.target.checked) {
-                            addLog("Auto-Ambient Light Sensor enabled.", "info");
-                          } else {
-                            addLog("Auto-Ambient Light Sensor disabled.", "info");
-                          }
-                        }}
-                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] focus:ring-0 cursor-pointer accent-[#00ffcc]"
-                      />
-                      <span className="group-hover:text-white uppercase tracking-wider">Auto-Ambient Adjustment</span>
-                    </label>
-
-                    <label className="flex items-center space-x-2 cursor-pointer group">
-                      <input 
-                        type="checkbox" 
-                        checked={wakeWordEnabled} 
-                        onChange={(e) => {
-                          setWakeWordEnabled(e.target.checked);
-                          if (e.target.checked) {
-                            addLog("Voice Wake-Word Trigger ('Hey Antonio') enabled.", "info");
-                          } else {
-                            addLog("Voice Wake-Word Trigger disabled. Loud noises will activate.", "info");
-                          }
-                        }}
-                        className="rounded-sm bg-zinc-900 border-zinc-700 text-[#00ffcc] focus:ring-0 cursor-pointer accent-[#00ffcc]"
-                      />
-                      <span className="group-hover:text-white uppercase tracking-wider">Hey Antonio Wake Word</span>
-                    </label>
-
-                    {ambientLight !== null && (
-                      <div className="flex items-center justify-between text-[7px] text-gray-500 uppercase tracking-widest pt-1.5 border-t border-zinc-800/50">
-                        <span>Light Sensor Reading</span>
-                        <span className="font-bold text-yellow-400">{ambientLight} lx ({ambientLight < 45 ? 'Night / Dark' : ambientLight < 90 ? 'Dim' : ambientLight > 175 ? 'Bright' : 'Normal'})</span>
-                      </div>
-                    )}
                   </div>
                 </div>
              </div>
 
              {/* Real-time Logger Console */}
-             <div className="flex-1 flex flex-col mt-6 min-h-[120px]">
-                <span className="text-[10px] tracking-widest uppercase opacity-50 mb-2">Live Console Logs</span>
-                <div className="flex-1 bg-black border border-[#00ffcc]/10 p-3 rounded-sm font-mono text-[9px] overflow-y-auto space-y-1.5 h-32 scrollbar-thin">
+             <div className="flex-1 flex flex-col mt-5 min-h-[110px]">
+                <span className="text-[10px] tracking-widest uppercase opacity-50 mb-1.5">Live Console Logs</span>
+                <div className="flex-1 bg-black border border-[#00ffcc]/10 p-2.5 rounded-sm font-mono text-[9px] overflow-y-auto space-y-1.5 h-28 scrollbar-thin">
                    {logs.length === 0 ? (
                       <span className="text-gray-600 italic">Waiting for events...</span>
                    ) : (
@@ -1072,16 +1411,33 @@ export default function App() {
                 </div>
              </div>
 
-             <div className="mt-6">
+             <div className="mt-4 grid grid-cols-2 gap-2">
+                <button 
+                  onClick={() => setShowDeskHabits(true)}
+                  className="w-full py-2 bg-transparent hover:bg-amber-400/10 border border-amber-400/60 text-amber-300 uppercase text-[11px] font-bold tracking-widest rounded-sm transition-all text-center"
+                >
+                  Care & Habits
+                </button>
                 <button 
                   onClick={() => setShowTemplate(true)}
-                  className="w-full py-2 bg-transparent hover:bg-[#00ffcc]/10 border border-[#00ffcc] text-[#00ffcc] uppercase text-xs font-bold tracking-widest rounded-sm transition-all"
+                  className="w-full py-2 bg-transparent hover:bg-[#00ffcc]/10 border border-[#00ffcc] text-[#00ffcc] uppercase text-[11px] font-bold tracking-widest rounded-sm transition-all text-center"
                 >
                   Open Blueprint
                 </button>
              </div>
           </div>
         </>
+      )}
+
+      {/* Desk Wellness & Companion Habits Drawer */}
+      {showDeskHabits && (
+        <DeskHabits 
+          onClose={() => setShowDeskHabits(false)} 
+          focusScore={focusScore}
+          onCompanionReact={(action) => {
+            addLog(`Desk action triggered: ${action}`, 'info');
+          }}
+        />
       )}
     </div>
   );

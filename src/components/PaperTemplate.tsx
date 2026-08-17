@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Printer, 
   X, 
@@ -11,24 +11,71 @@ import {
   ChevronRight, 
   Check, 
   Layers, 
-  Sparkles 
+  Sparkles,
+  Download,
+  Sliders,
+  Maximize2,
+  Rotate3d,
+  Compass,
+  Palette,
+  Eye,
+  FileCode,
+  Zap,
+  Box
 } from 'lucide-react';
+import { Paper3DFoldingViewer } from './Paper3DFoldingViewer';
 
 interface PaperTemplateProps {
   onClose: () => void;
 }
 
-type ModelType = 'iphone-se' | 'bezel-less' | 'arcade' | 'robot';
-type BlueprintStyle = 'draft' | 'blueprint' | 'print';
+export type ModelType = 'cyber-mac' | 'mech-pet' | 'arcade' | 'flat-fold' | 'parametric';
+export type SkinTheme = 'blueprint' | 'cyber' | 'retro' | 'craft' | 'kawaii' | 'clean';
 
 export function PaperTemplate({ onClose }: PaperTemplateProps) {
-  const [selectedModel, setSelectedModel] = useState<ModelType>('iphone-se');
-  const [blueprintStyle, setBlueprintStyle] = useState<BlueprintStyle>('blueprint');
+  const [selectedModel, setSelectedModel] = useState<ModelType>('parametric');
+  const [skinTheme, setSkinTheme] = useState<SkinTheme>('craft');
+  const [viewMode, setViewMode] = useState<'blueprint' | '3d-simulator'>('3d-simulator');
   const [hoveredPart, setHoveredPart] = useState<string | null>(null);
   const [hoveredDescription, setHoveredDescription] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'steps' | 'materials' | 'tips'>('steps');
+  const [activeTab, setActiveTab] = useState<'steps' | 'parametric' | 'materials' | 'tips'>('steps');
 
-  // Handle setting part description on hover
+  // Parametric Dimensions in mm
+  const [phoneWidth, setPhoneWidth] = useState<number>(71.5);
+  const [phoneHeight, setPhoneHeight] = useState<number>(147.5);
+  const [phoneThickness, setPhoneThickness] = useState<number>(8.0);
+  const [bezelPadding, setBezelPadding] = useState<number>(4.0);
+  const [notchType, setNotchType] = useState<'pill' | 'notch' | 'punchhole' | 'none'>('pill');
+
+  const svgContainerRef = useRef<HTMLDivElement>(null);
+
+  const presets = [
+    { label: 'iPhone SE / 8', w: 67.3, h: 138.4, t: 7.3, b: 8.0, n: 'none' as const },
+    { label: 'iPhone 15/16 Pro', w: 71.5, h: 147.5, t: 7.8, b: 3.5, n: 'pill' as const },
+    { label: 'iPhone 16 Pro Max', w: 76.7, h: 159.9, t: 8.2, b: 3.0, n: 'pill' as const },
+    { label: 'Galaxy S23/S24', w: 70.6, h: 147.0, t: 7.6, b: 3.5, n: 'punchhole' as const },
+    { label: 'Google Pixel 8/9', w: 70.8, h: 150.5, t: 8.9, b: 4.0, n: 'punchhole' as const },
+    { label: 'iPad Mini (Small Tab)', w: 134.8, h: 195.4, t: 6.3, b: 7.0, n: 'none' as const },
+  ];
+
+  const downloadSVG = () => {
+    if (!svgContainerRef.current) return;
+    const svgElement = svgContainerRef.current.querySelector('svg');
+    if (!svgElement) return;
+
+    const serializer = new XMLSerializer();
+    const source = serializer.serializeToString(svgElement);
+    const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `paper-pet-${selectedModel}-${skinTheme}-blueprint.svg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const handlePartHover = (partName: string, desc: string) => {
     setHoveredPart(partName);
     setHoveredDescription(desc);
@@ -39,297 +86,604 @@ export function PaperTemplate({ onClose }: PaperTemplateProps) {
     setHoveredDescription(null);
   };
 
-  // Content for each model
-  const modelSpecs = {
-    'iphone-se': {
-      title: "iPhone SE (4.7-inch) Sleeve",
-      icon: <Smartphone className="w-5 h-5" />,
-      description: "A precision-engineered paper enclosure specifically tailored to match the classic form factor of the iPhone SE (2nd/3rd gen), iPhone 8, 7, and 6s. Fits thick-bezel screens perfectly.",
-      targetDevices: "iPhone SE (2020, 2022), iPhone 8, 7, 6, 6s",
-      dimensions: "138.4 mm x 67.3 mm x 7.3 mm",
+  // Comprehensive ground-up model specifications
+  const modelSpecs: Record<ModelType, {
+    title: string;
+    subtitle: string;
+    icon: React.ReactNode;
+    description: string;
+    targetDevices: string;
+    dimensions: string;
+    assemblyTime: string;
+    glueRequired: string;
+    features: string[];
+    steps: string[];
+  }> = {
+    'cyber-mac': {
+      title: "Mac-Pet 1984 Vintage Desktop",
+      subtitle: "Retro Macintosh Computer Desk Housing",
+      icon: <Box className="w-5 h-5 text-amber-400" />,
+      description: "An homage to the iconic 1984 Macintosh computer. Features authentic horizontal cooling slats, 3.5\" floppy disk slot artwork, classic bevel CRT screen viewport, and a built-in 20° ergonomic rear easel kickstand.",
+      targetDevices: "All smartphones (up to 6.8\" display)",
+      dimensions: "155 mm H x 105 mm W x 85 mm D (Assembled)",
+      assemblyTime: "5 - 8 mins",
+      glueRequired: "Glue or tape on 2 side tabs",
       features: [
-        "Circular Touch ID Home Button alignment guide",
-        "Horizontal speaker grill & front-camera bezel cutouts",
-        "Symmetrical top/bottom border spacing",
-        "Charging/cable access port on bottom flap"
+        "Curved vintage CRT monitor viewport for nostalgic aesthetics",
+        "Classic 3.5\" floppy drive slot & rainbow power badge",
+        "20° rear tilt wedge with integrated USB cable canal",
+        "Reinforced twin side walls for rigid structural desktop balance"
       ],
       steps: [
-        "Cut Out Outline: Use scissors to cut along the outer thick SOLID black lines.",
-        "Aperture Cuts: Use a precision craft knife to cut out the inner display rectangle and the circular front-camera hole.",
-        "Score Dashed Lines: Lightly score all DOTTED / DASHED fold lines with a ruler and dry pen to ensure clean folds.",
-        "Fold the Frame: Fold the sides backward to create a 3D rectangular sleeve.",
-        "Glue the Joints: Apply glue or double-sided tape to the designated 'GLUE JOINT' flaps and seal.",
-        "Insert & Align: Slide your phone in from the top. The screen and camera will align perfectly with the cutouts."
+        "Perimeter Cut: Cut out the entire outer solid line including the main body, side walls, and rear easel.",
+        "Aperture Scoring: Carefully cut out the CRT screen window and camera notch using a craft knife.",
+        "Pre-Crease Score: Use a ruler and blunt stylus to score all dashed fold lines.",
+        "Fold Side Walls: Fold left and right ventilation panels backward at 90°.",
+        "Easel Kickstand: Fold the rear triangular support flap back 45° and lock the bottom tab.",
+        "Mount & Boot: Slide your phone through the top sleeve and awaken your retro companion!"
       ]
     },
-    'bezel-less': {
-      title: "Universal Bezel-Less Sleeve",
-      icon: <Smartphone className="w-5 h-5 text-purple-400" />,
-      description: "A modernized envelope featuring edge-to-edge display clearance to fit modern notch, punch-hole, and Dynamic Island devices without obscuring the active camera sensors.",
-      targetDevices: "iPhone 13/14/15/16 (Pro/Base), Galaxy S22/S23/S24, Pixel 7/8/9",
-      dimensions: "147.5 mm x 71.5 mm x 7.8 mm (Stretch-fit)",
+    'mech-pet': {
+      title: "Mech-Pet Gundam Exoskeleton",
+      subtitle: "Robotic Companion Armor with Pop-Up Ears",
+      icon: <Cpu className="w-5 h-5 text-[#00ffcc]" />,
+      description: "Futuristic mecha companion chassis engineered with pop-up cat ears, geometric visor frame, printed PCB copper circuit traces, fold-forward safety grip paws, and an A-frame stabilizing kickstand.",
+      targetDevices: "Universal (Portrait or Landscape docking)",
+      dimensions: "165 mm H x 115 mm W x 90 mm D",
+      assemblyTime: "6 - 10 mins",
+      glueRequired: "Minimal (2 glue tabs)",
       features: [
-        "Maximum screen-to-body viewport window",
-        "Dynamic Island / top camera pill cut guide",
-        "Curved display-corner bezel matches",
-        "Extra-wide bottom connector slot"
+        "Articulated fold-forward claws to firmly lock device onto cradle",
+        "3D pop-up mecha antennas/ears with futuristic polygon styling",
+        "Futuristic cyber armor PCB artwork with sci-fi telemetry decals",
+        "Wide-stance A-frame rear exoskeleton support strut"
       ],
       steps: [
-        "Cut Border lines: Excise the outer perimeter using standard paper craft scissors.",
-        "Screen and Island: Carefully slice the large screen viewport and choose either the pill cutout (Dynamic Island) or notch guide.",
-        "Score Folds: Use a stylus or blunt edge to score the fold lines along the sides.",
-        "Crease & Shape: Wrap the side folds around to construct a tight protective casing.",
-        "Secure Seams: Apply adhesive tape along the vertical glue flap and assemble.",
-        "Slide phone in: Drop your device in and ensure the camera lens has a clean line of sight through the island aperture."
+        "Excise Armor: Cut along the outer outline including the ear flaps and bottom claw grips.",
+        "Pop-Up Ears: Fold the antenna ears slightly forward along their upper base creases.",
+        "Fold Grip Paws: Bend the left and right holding paws forward 90° to create the bottom cradle lip.",
+        "A-Frame Brace: Fold the rear stabilizer strut backward by 45° and glue the cross-brace.",
+        "Engage Companion: Dock phone onto the paws. The companion is now armored and ready!"
       ]
     },
     'arcade': {
-      title: "Retro 3D Arcade Cabinet",
-      icon: <Gamepad2 className="w-5 h-5 text-red-400" />,
-      description: "An advanced, self-supporting 3D desktop stand that transforms your phone into a retro arcade machine terminal. The phone slides diagonally in from the top, serving as the arcade screen.",
-      targetDevices: "Universal fits up to 6.7\" devices (slanted dock)",
-      dimensions: "155 mm x 95 mm x 110 mm (3D Assembled)",
+      title: "Retro Arcade Mini-Cabinet",
+      subtitle: "Coin-Op Tabletop Arcade Housing",
+      icon: <Gamepad2 className="w-5 h-5 text-pink-400" />,
+      description: "A tabletop mini arcade cabinet that wraps around your smartphone. Features a lighted marquee header, angled side cabinet wings, coin insert slot, and joystick/button artwork deck.",
+      targetDevices: "Smartphones 5.4\" to 6.7\" (iPhone, Galaxy, Pixel)",
+      dimensions: "170 mm H x 100 mm W x 95 mm D",
+      assemblyTime: "7 - 12 mins",
+      glueRequired: "Glue or double-sided tape",
       features: [
-        "Nostalgic dual arcade wing silhouettes",
-        "Integrated joystick & action button printed graphics",
-        "Interlocking tabs for glueless structural assembly",
-        "Kitten-ears visual accessory header"
+        "Slanted display angle matching authentic 1980s coin-op cabinets",
+        "Marquee header banner ('★ CYBER PET ARCADE ★')",
+        "Joystick & button deck acts as the front safety shelf",
+        "Large side wings featuring retro pixel art flourishes"
       ],
       steps: [
-        "Cut All Pieces: Cut out Left Wing, Right Wing, and the central folding strip very carefully.",
-        "Prepare Slots: Use an exacto knife to slice the thin vertical slots on the Side Wings (marked in red).",
-        "Accordion Fold: Fold the central structural strip in an accordion-style along the dashed guides.",
-        "Slot Assembly: Insert the tabs on the central strip into the corresponding slots of the Left and Right Wings.",
-        "Fold the Controller: Lock the joystick deck and coin gate panels forward.",
-        "Dock Phone: Slide your smartphone down into the slanted bed. Enjoy your retro mini terminal!"
+        "Excise Cabinet: Cut around the outer perimeter of the marquee, side panels, and control deck.",
+        "Screen Cutout: Slice out the interior screen bezel with a ruler and hobby knife.",
+        "Fold Side Wings: Fold the left and right arcade wings backward at 90°.",
+        "Fold Control Deck: Crease the joystick shelf forward to form the 3D phone resting base.",
+        "Secure Marquee: Fold the top marquee overhang forward to complete the coin-op silhouette."
       ]
     },
-    'robot': {
-      title: "Antonio's Robot Butler Stand",
-      icon: <Cpu className="w-5 h-5 text-[#00ffcc]" />,
-      description: "A functional sci-fi robot desk frame. Supports your smartphone at an ergonomic 45-degree angle, decorated with motherboard-themed visual traces, folding grip claws, and robust stability struts.",
-      targetDevices: "Universal (supports portrait or landscape docking)",
-      dimensions: "140 mm x 90 mm x 95 mm (3D Assembled)",
+    'flat-fold': {
+      title: "Zero-Glue Origami Desk Cradle",
+      subtitle: "Smart Slit-and-Tab Interlocking Stand",
+      icon: <Scissors className="w-5 h-5 text-emerald-400" />,
+      description: "A single-sheet origami desk stand that requires ZERO glue or tape. Precision interlocking tabs snap into laser-aligned slots, creating an ultra-sturdy 60°/45° dual-angle phone cradle in under 2 minutes.",
+      targetDevices: "Universal (Any phone or small e-reader)",
+      dimensions: "140 mm H x 85 mm W x 80 mm D",
+      assemblyTime: "2 - 3 mins",
+      glueRequired: "NONE (100% Glue-Free Interlocking)",
       features: [
-        "Folding visual clamping claws to prevent sliding",
-        "Printed printed-circuit-board (PCB) tracks design",
-        "Fold-out A-frame rear leg stabilization strut",
-        "Integrated cable-routing guides on base feet"
+        "Zero adhesive required — 100% mechanical interlocking tabs",
+        "Dual viewing angle support (60° deep focus / 45° glance mode)",
+        "Fastest assembly time: cut, score, fold & snap together in 90 seconds",
+        "Flat-folds into a book or notebook for effortless portability"
       ],
       steps: [
-        "Frame Extraction: Cut along the outer boundary of the robot plate, leg struts, and arm clamps.",
-        "Arm Pre-Crease: Carefully fold the left and right 'grabbing' paws forward.",
-        "Rear Strut Fold: Score and fold the rear triangular stand flap backwards by 45 degrees.",
-        "Assemble Footlip: Fold the bottom lip forward to act as the primary safety barrier for your device.",
-        "Reinforce Strut: Tape or glue the A-frame stabilizer to the back of the robot's chest.",
-        "Mount Companion: Place your phone onto the plate. The robot arms hold it safely on your desk!"
+        "Single Cut: Cut along the outer perimeter and the 2 small internal slit slots (A & B).",
+        "Score Creases: Score the 4 dashed fold lines thoroughly with a stylus.",
+        "Fold Cradle Lip: Fold the bottom catch tray upward.",
+        "Interlock Stand: Fold the rear triangular spine back and insert Tab 1 into Slot A.",
+        "Ready Instantly: No drying time needed! Place your phone on the cradle immediately."
+      ]
+    },
+    'parametric': {
+      title: "Parametric Custom Millimeter Sleeve",
+      subtitle: "Live Algorithmic Geometric Customizer",
+      icon: <Sliders className="w-5 h-5 text-cyan-400" />,
+      description: "A dynamically generated vector blueprint customized to the exact millimeter dimensions of any phone or mini-tablet. Real-time adjusts screen aperture, side spines, notch styles, and glue tabs.",
+      targetDevices: "Custom User Millimeters (Phone, Tablet, E-Reader)",
+      dimensions: `${phoneWidth.toFixed(1)} mm x ${phoneHeight.toFixed(1)} mm x ${phoneThickness.toFixed(1)} mm`,
+      assemblyTime: "4 - 6 mins",
+      glueRequired: "Single side glue tab",
+      features: [
+        "Real-time geometric vector recalculation based on millimeter sliders",
+        "Integrated physical 50mm calibration scale bar for 1:1 print verification",
+        "Selectable camera apertures: Dynamic Island, Punch Hole, Notch, Clean",
+        "Vector SVG download compatible with Cricut / Silhouette cutting plotters"
+      ],
+      steps: [
+        "Tune Sliders: Set exact width, height, thickness, and bezel padding in the Custom Dims tab.",
+        "Print Calibration: Print at 100% scale and verify the 50mm ruler with a physical ruler.",
+        "Excise Viewport: Cut out the display window and the chosen camera aperture cutout.",
+        "Score & Fold: Score all dashed lines with a blunt stylus before folding.",
+        "Glue Flap: Fasten the side adhesive tab to construct the custom form-fit sleeve."
       ]
     }
   };
 
   const materials = [
-    { name: "Heavy Cardstock", detail: "A4 or Letter size (180-240 gsm is highly recommended for stable 3D stands)." },
-    { name: "Precision Craft Knife / Scissors", detail: "Essential for tight cuts, circular holes, and the display screen bezel." },
-    { name: "Ruler & Scoring Tool", detail: "An empty pen or plastic stylus to pre-crease lines before folding." },
-    { name: "Adhesive Tape or Glue", detail: "Double-sided tape strips or standard white craft glue for joints." }
+    { name: "Heavy Cardstock (180-250 gsm)", detail: "Standard printer paper is too flimsy. Cardstock or watercolor paper provides rigid, long-lasting desktop structures." },
+    { name: "Craft Knife & Cutting Mat", detail: "A precision hobby knife (X-Acto or similar) ensures crisp corner cuts for screen viewports and camera holes." },
+    { name: "Ruler & Scoring Tool", detail: "Use a blunt stylus, bone folder, or dry ballpoint pen to score dashed lines before folding for razor-sharp machine edges." },
+    { name: "Adhesive Tape or Glue Stick", detail: "Double-sided tape strips or quick-dry PVA craft glue for tabs (not needed for Zero-Glue Origami model)." }
   ];
 
   const assemblyTips = [
-    { title: "Score Before Folding", text: "Never fold cardboard directly. Always use a ruler and score the dashed lines first. This gives clean, sharp, professional machine-like corners." },
-    { title: "Camera Line-Of-Sight", text: "Ensure the camera and sensor aperture holes are cut slightly wider than needed to avoid obstructing the Paper Pet's computer vision." },
-    { title: "Cable Management", text: "Feed your charging cable through the access ports before locking the phone in, preventing wear and tear on the paper joints." },
-    { title: "Glue Setting Time", text: "If using liquid craft glue, use paper clips or binder clips to hold the tabs together for 2 minutes while the glue dries." }
+    { title: "Always Score Before Folding", text: "Scoring indents the paper fibers without cutting through them. Always use a ruler to guide your scoring tool across dashed lines." },
+    { title: "Camera Aperture Clearance", text: "Cut the camera viewport slightly wider than your lens to give the companion's computer vision an unobstructed field of view." },
+    { title: "Cable Management Canal", text: "Feed your charging cable through the bottom dock opening before setting the phone inside to prevent strain on the paper base." },
+    { title: "Printer Scale Setting: 100%", text: "When printing, ensure your printer dialog is set to '100%' or 'Actual Size' (do NOT select 'Fit to Page') to ensure 1:1 true scale." }
   ];
 
-  return (
-    <div className="absolute inset-0 bg-[#0c0f12] text-white z-50 overflow-auto flex flex-col font-sans print:bg-white print:text-black">
-      {/* HEADER SECTION - Hiddon on Print */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center p-6 border-b border-zinc-800 bg-[#12161a] print:hidden gap-4">
-        <div>
-          <div className="flex items-center space-x-2">
-            <Sparkles className="w-5 h-5 text-[#00ffcc]" />
-            <h2 className="text-2xl font-black tracking-widest text-[#00ffcc] uppercase">PAPER BLUEPRINT STUDIO</h2>
-          </div>
-          <p className="text-zinc-400 text-xs mt-1">Select, preview, and print highly accurate structural enclosures for your spatial companion.</p>
-        </div>
-        
-        {/* Actions Bar */}
-        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-          {/* Blueprint Style Toggle */}
-          <div className="flex items-center bg-zinc-900 border border-zinc-800 p-1 rounded-sm text-xs">
-            <button 
-              onClick={() => setBlueprintStyle('blueprint')}
-              className={`px-3 py-1.5 font-bold uppercase tracking-wider rounded-sm transition-all ${blueprintStyle === 'blueprint' ? 'bg-[#00ffcc] text-black shadow-sm' : 'text-zinc-400 hover:text-white'}`}
-            >
-              Classic Blue
-            </button>
-            <button 
-              onClick={() => setBlueprintStyle('draft')}
-              className={`px-3 py-1.5 font-bold uppercase tracking-wider rounded-sm transition-all ${blueprintStyle === 'draft' ? 'bg-[#00ffcc] text-black shadow-sm' : 'text-zinc-400 hover:text-white'}`}
-            >
-              Draft Paper
-            </button>
-            <button 
-              onClick={() => setBlueprintStyle('print')}
-              className={`px-3 py-1.5 font-bold uppercase tracking-wider rounded-sm transition-all ${blueprintStyle === 'print' ? 'bg-[#00ffcc] text-black shadow-sm' : 'text-zinc-400 hover:text-white'}`}
-            >
-              Crisp Outline
-            </button>
-          </div>
+  // Visual styling for SVG canvas based on selected skin theme
+  const getCanvasSkinClasses = () => {
+    switch (skinTheme) {
+      case 'cyber':
+        return {
+          wrapper: 'bg-[#05110d] text-emerald-300 border-emerald-500/40',
+          svgStroke: 'stroke-emerald-400',
+          svgFillText: 'fill-emerald-400',
+          accent: '#10b981',
+          gridLine: 'rgba(16,185,129,0.12)',
+        };
+      case 'retro':
+        return {
+          wrapper: 'bg-[#f4efe4] text-[#4a3f35] border-[#a39478]',
+          svgStroke: 'stroke-[#78350f]',
+          svgFillText: 'fill-[#78350f]',
+          accent: '#b45309',
+          gridLine: 'rgba(120,53,15,0.08)',
+        };
+      case 'craft':
+        return {
+          wrapper: 'bg-[#d8bc97] text-[#3e2c18] border-[#8a683f]',
+          svgStroke: 'stroke-[#451a03]',
+          svgFillText: 'fill-[#451a03]',
+          accent: '#78350f',
+          gridLine: 'rgba(69,26,3,0.1)',
+        };
+      case 'kawaii':
+        return {
+          wrapper: 'bg-[#fff0f5] text-[#9d174d] border-pink-300',
+          svgStroke: 'stroke-pink-500',
+          svgFillText: 'fill-pink-600',
+          accent: '#ec4899',
+          gridLine: 'rgba(236,72,153,0.12)',
+        };
+      case 'clean':
+        return {
+          wrapper: 'bg-white text-zinc-900 border-zinc-300',
+          svgStroke: 'stroke-black',
+          svgFillText: 'fill-black',
+          accent: '#18181b',
+          gridLine: 'rgba(0,0,0,0.06)',
+        };
+      case 'blueprint':
+      default:
+        return {
+          wrapper: 'bg-[#0a192f] text-[#00ffcc] border-cyan-500/40',
+          svgStroke: 'stroke-[#00ffcc]',
+          svgFillText: 'fill-[#00ffcc]',
+          accent: '#00ffcc',
+          gridLine: 'rgba(0,255,204,0.12)',
+        };
+    }
+  };
 
-          <button 
-            onClick={() => window.print()} 
-            className="flex items-center space-x-2 px-5 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-[#00ffcc] border border-[#00ffcc]/30 hover:border-[#00ffcc] transition-all font-bold uppercase tracking-widest text-xs rounded-sm cursor-pointer"
+  const canvasStyle = getCanvasSkinClasses();
+
+  return (
+    <div className="fixed inset-0 bg-[#0a0d10] text-white z-50 overflow-hidden flex flex-col font-sans select-none print:bg-white print:text-black">
+      
+      {/* ================= TOP HEADER BAR ================= */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center px-6 py-4 border-b border-zinc-800 bg-[#101418] print:hidden gap-4 z-20">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 rounded-md bg-[#00ffcc]/10 border border-[#00ffcc]/30 text-[#00ffcc]">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <h1 className="text-lg font-black tracking-widest text-white uppercase">Papercraft Companion Studio</h1>
+              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#00ffcc]/20 text-[#00ffcc] border border-[#00ffcc]/40">
+                v2.0 Redesign
+              </span>
+            </div>
+            <p className="text-zinc-400 text-xs mt-0.5">Engineered origami desk enclosures, 3D folding simulator & 1:1 true-scale blueprints</p>
+          </div>
+        </div>
+
+        {/* Center Mode Switcher: 2D Blueprint vs 3D Origami Simulator */}
+        <div className="flex items-center bg-zinc-900 border border-zinc-800 p-1 rounded-md text-xs">
+          <button
+            onClick={() => setViewMode('blueprint')}
+            className={`flex items-center space-x-1.5 px-3.5 py-1.5 font-bold uppercase tracking-wider rounded-sm transition-all ${
+              viewMode === 'blueprint'
+                ? 'bg-white text-black shadow-sm'
+                : 'text-zinc-400 hover:text-white'
+            }`}
           >
-            <Printer className="w-4 h-4" />
-            <span>Print Enclosure</span>
+            <Compass className="w-4 h-4" />
+            <span>2D Blueprint & Cut Plan</span>
           </button>
 
-          <button 
-            onClick={onClose} 
-            className="flex items-center space-x-1 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white transition-all font-bold uppercase tracking-widest text-xs rounded-sm cursor-pointer ml-auto lg:ml-0"
+          <button
+            onClick={() => setViewMode('3d-simulator')}
+            className={`flex items-center space-x-1.5 px-3.5 py-1.5 font-bold uppercase tracking-wider rounded-sm transition-all ${
+              viewMode === '3d-simulator'
+                ? 'bg-white text-black shadow-sm'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Rotate3d className="w-4 h-4" />
+            <span>3D Origami Simulator</span>
+          </button>
+        </div>
+
+        {/* Right Action Tools */}
+        <div className="flex items-center space-x-2 w-full lg:w-auto justify-end">
+          {/* Skin Theme Dropdown / Pills */}
+          <div className="hidden xl:flex items-center space-x-1 bg-zinc-900/80 p-1 rounded-md border border-zinc-800 text-[10px]">
+            <Palette className="w-3.5 h-3.5 text-zinc-400 ml-1.5 mr-0.5" />
+            {[
+              { id: 'craft', label: 'Cardboard' },
+              { id: 'clean', label: 'Matte White' },
+              { id: 'retro', label: '1984 Beige' },
+              { id: 'kawaii', label: 'Pastel' },
+              { id: 'blueprint', label: 'Cyanotype' },
+              { id: 'cyber', label: 'Dark Foil' },
+            ].map((skin) => (
+              <button
+                key={skin.id}
+                onClick={() => setSkinTheme(skin.id as SkinTheme)}
+                className={`px-2 py-1 rounded-xs font-bold transition-all ${
+                  skinTheme === skin.id
+                    ? 'bg-white/20 text-white shadow-xs'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                {skin.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={downloadSVG}
+            title="Download crisp vector SVG for Cricut, Silhouette, or Laser Plotters"
+            className="flex items-center space-x-1.5 px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 text-emerald-400 border border-emerald-500/30 hover:border-emerald-400 transition-all font-bold uppercase tracking-widest text-xs rounded-sm cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Export SVG</span>
+          </button>
+
+          <button
+            onClick={() => window.print()}
+            title="Print blueprint directly at 100% 1:1 scale on A4 or US Letter"
+            className="flex items-center space-x-1.5 px-4 py-2 bg-zinc-900 hover:bg-white hover:text-black text-white border border-white/30 transition-all font-bold uppercase tracking-widest text-xs rounded-sm cursor-pointer"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Print</span>
+          </button>
+
+          <button
+            onClick={onClose}
+            className="flex items-center space-x-1 px-4 py-2 bg-red-600/90 hover:bg-red-600 text-white transition-all font-bold uppercase tracking-widest text-xs rounded-sm cursor-pointer"
           >
             <X className="w-4 h-4" />
-            <span>Close</span>
+            <span className="hidden sm:inline">Exit</span>
           </button>
         </div>
       </div>
 
-      {/* CORE CONTENT LAYOUT */}
-      <div className="flex-1 flex flex-col lg:flex-row print:flex-row overflow-hidden bg-[#0a0d10] print:bg-white print:overflow-visible">
+      {/* ================= MAIN SPLIT VIEWPORT ================= */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-[#07090b] print:bg-white print:overflow-visible">
         
-        {/* LEFT PANEL: CONFIGURATION, SPECS & INSTRUCTIONS (Hidden on Print) */}
-        <div className="w-full lg:w-[400px] border-r border-zinc-800 flex flex-col bg-[#111519] overflow-y-auto print:hidden shrink-0">
+        {/* LEFT COLUMN: MODEL SELECTOR, METADATA & WORKSHOP MANUAL (Hidden on print) */}
+        <div className="w-full lg:w-[420px] border-r border-zinc-800/90 flex flex-col bg-[#0d1014] overflow-y-auto print:hidden shrink-0 z-10">
           
-          {/* MODEL SELECTION BOX */}
-          <div className="p-5 border-b border-zinc-800">
-            <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">1. Select Housing Model</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {(Object.keys(modelSpecs) as ModelType[]).map((mId) => (
-                <button
-                  key={mId}
-                  onClick={() => {
-                    setSelectedModel(mId);
-                    handlePartLeave();
-                  }}
-                  className={`flex items-center space-x-2 p-3 text-left border rounded-sm transition-all text-xs cursor-pointer ${selectedModel === mId ? 'border-[#00ffcc] bg-[#00ffcc]/5 text-white' : 'border-zinc-800 bg-zinc-900/50 hover:bg-zinc-850 text-zinc-400 hover:text-zinc-200'}`}
-                >
-                  <div className={`p-1.5 rounded-sm bg-zinc-900 ${selectedModel === mId ? 'text-[#00ffcc] border border-[#00ffcc]/20' : 'text-zinc-400'}`}>
-                    {modelSpecs[mId].icon}
-                  </div>
-                  <div className="truncate">
-                    <p className="font-bold tracking-wide uppercase leading-tight">{mId.replace('-', ' ')}</p>
-                    <p className="text-[9px] opacity-60 truncate">
-                      {mId === 'iphone-se' ? 'Perfect Classic Fit' : mId === 'bezel-less' ? 'Universal Fit' : mId === 'arcade' ? '3D Cabin Stand' : 'Mech Desk Frame'}
-                    </p>
-                  </div>
-                </button>
-              ))}
+          {/* 1. CHOOSE MODEL TILES */}
+          <div className="p-4 border-b border-zinc-800/80">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 flex items-center space-x-1.5">
+                <Box className="w-3.5 h-3.5 text-[#00ffcc]" />
+                <span>1. Select Origami Enclosure</span>
+              </span>
+              <span className="text-[9px] font-mono text-zinc-500">5 Models</span>
+            </div>
+
+            <div className="space-y-1.5">
+              {(Object.keys(modelSpecs) as ModelType[]).map((mId) => {
+                const isSelected = selectedModel === mId;
+                const spec = modelSpecs[mId];
+                return (
+                  <button
+                    key={mId}
+                    onClick={() => {
+                      setSelectedModel(mId);
+                      handlePartLeave();
+                    }}
+                    className={`w-full p-2.5 rounded-md border text-left transition-all flex items-center justify-between cursor-pointer ${
+                      isSelected
+                        ? 'border-white bg-white/10 text-white shadow-[0_2px_10px_rgba(255,255,255,0.05)]'
+                        : 'border-zinc-800/80 bg-zinc-950/40 hover:bg-zinc-900/80 text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-3 truncate">
+                      <div className={`p-2 rounded-sm bg-zinc-900 shrink-0 ${isSelected ? 'text-white border border-white/30' : 'text-zinc-400'}`}>
+                        {spec.icon}
+                      </div>
+                      <div className="truncate">
+                        <div className="font-bold text-xs tracking-wide uppercase truncate text-zinc-100">{spec.title}</div>
+                        <div className="text-[10px] text-zinc-400 truncate">{spec.subtitle}</div>
+                      </div>
+                    </div>
+                    {isSelected && <ChevronRight className="w-4 h-4 text-white shrink-0 ml-1" />}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* CHOSEN MODEL METADATA */}
-          <div className="p-5 border-b border-zinc-800 bg-zinc-950/40">
+          {/* 2. CHOSEN MODEL SPECIFICATION CARD */}
+          <div className="p-4 border-b border-zinc-800/80 bg-zinc-950/60">
             <div className="flex items-center space-x-2 text-[#00ffcc]">
               {modelSpecs[selectedModel].icon}
-              <h4 className="font-bold text-sm uppercase tracking-wide">{modelSpecs[selectedModel].title}</h4>
+              <h2 className="font-black text-xs uppercase tracking-wider">{modelSpecs[selectedModel].title}</h2>
             </div>
-            <p className="text-xs text-zinc-400 mt-2 leading-relaxed">{modelSpecs[selectedModel].description}</p>
+            <p className="text-[11px] text-zinc-400 mt-2 leading-relaxed">{modelSpecs[selectedModel].description}</p>
             
-            <div className="mt-4 space-y-1.5 border-t border-zinc-800/60 pt-3 text-[11px]">
-              <div className="flex justify-between">
-                <span className="text-zinc-500 uppercase tracking-wider font-semibold">Targets:</span>
-                <span className="text-zinc-300 font-medium truncate max-w-[200px]">{modelSpecs[selectedModel].targetDevices}</span>
+            <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-zinc-800/60 text-[10px] font-mono">
+              <div className="bg-zinc-900/60 p-2 rounded border border-zinc-800">
+                <span className="text-zinc-500 uppercase block text-[8px]">Assembly Time</span>
+                <span className="text-zinc-200 font-bold">{modelSpecs[selectedModel].assemblyTime}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500 uppercase tracking-wider font-semibold">DIMS (EST):</span>
-                <span className="text-zinc-300 font-medium">{modelSpecs[selectedModel].dimensions}</span>
+              <div className="bg-zinc-900/60 p-2 rounded border border-zinc-800">
+                <span className="text-zinc-500 uppercase block text-[8px]">Adhesive</span>
+                <span className="text-emerald-400 font-bold">{modelSpecs[selectedModel].glueRequired}</span>
               </div>
             </div>
           </div>
 
-          {/* INTERACTIVE WORKSHOP GUIDE tabs */}
-          <div className="flex border-b border-zinc-800 text-xs">
+          {/* 3. WORKSHOP MANUAL TABS */}
+          <div className="flex border-b border-zinc-800 text-[11px]">
             <button 
               onClick={() => setActiveTab('steps')}
-              className={`flex-1 py-3 text-center font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${activeTab === 'steps' ? 'border-[#00ffcc] text-[#00ffcc] bg-[#00ffcc]/5' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
+              className={`flex-1 py-2.5 text-center font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'steps' ? 'border-[#00ffcc] text-[#00ffcc] bg-[#00ffcc]/5' : 'border-transparent text-zinc-500 hover:text-zinc-300'
+              }`}
             >
               Steps
             </button>
             <button 
+              onClick={() => {
+                setActiveTab('parametric');
+                setSelectedModel('parametric');
+              }}
+              className={`flex-1 py-2.5 text-center font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'parametric' ? 'border-cyan-400 text-cyan-400 bg-cyan-400/5' : 'border-transparent text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Custom Dims
+            </button>
+            <button 
               onClick={() => setActiveTab('materials')}
-              className={`flex-1 py-3 text-center font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${activeTab === 'materials' ? 'border-[#00ffcc] text-[#00ffcc] bg-[#00ffcc]/5' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
+              className={`flex-1 py-2.5 text-center font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'materials' ? 'border-[#00ffcc] text-[#00ffcc] bg-[#00ffcc]/5' : 'border-transparent text-zinc-500 hover:text-zinc-300'
+              }`}
             >
               Materials
             </button>
             <button 
               onClick={() => setActiveTab('tips')}
-              className={`flex-1 py-3 text-center font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${activeTab === 'tips' ? 'border-[#00ffcc] text-[#00ffcc] bg-[#00ffcc]/5' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
+              className={`flex-1 py-2.5 text-center font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                activeTab === 'tips' ? 'border-[#00ffcc] text-[#00ffcc] bg-[#00ffcc]/5' : 'border-transparent text-zinc-500 hover:text-zinc-300'
+              }`}
             >
               Pro Tips
             </button>
           </div>
 
-          {/* TAB CONTENTS */}
-          <div className="flex-1 p-5 overflow-y-auto">
+          {/* TAB CONTENT AREA */}
+          <div className="flex-1 p-4 overflow-y-auto">
+            
+            {/* PARAMETRIC CONTROLS TAB */}
+            {activeTab === 'parametric' && (
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2 text-cyan-400">
+                  <Sliders className="w-4 h-4" />
+                  <span className="text-[10px] font-bold tracking-widest uppercase">Live Millimeter Customizer</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  Real-time recalculated geometric folding layout. Automatically scales front viewport, side spines, notch apertures, and glue flaps.
+                </p>
+
+                {/* Quick Presets */}
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[9px] uppercase font-bold text-zinc-400">Device Presets</span>
+                  <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                    {presets.map((p, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setPhoneWidth(p.w);
+                          setPhoneHeight(p.h);
+                          setPhoneThickness(p.t);
+                          setBezelPadding(p.b);
+                          setNotchType(p.n);
+                          setSelectedModel('parametric');
+                        }}
+                        className="p-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-cyan-400 rounded-sm text-left transition-all text-zinc-200 truncate"
+                      >
+                        <div className="font-bold truncate">{p.label}</div>
+                        <div className="text-[8px] text-zinc-500">{p.w} x {p.h} mm</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Sliders */}
+                <div className="space-y-3 pt-2 border-t border-zinc-800">
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-zinc-400 font-bold uppercase">Device Width:</span>
+                      <span className="font-mono text-cyan-400 font-bold">{phoneWidth.toFixed(1)} mm</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="55" 
+                      max="160" 
+                      step="0.5" 
+                      value={phoneWidth} 
+                      onChange={(e) => {
+                        setPhoneWidth(parseFloat(e.target.value));
+                        setSelectedModel('parametric');
+                      }}
+                      className="w-full accent-cyan-400 bg-zinc-800 cursor-pointer h-1.5 rounded"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-zinc-400 font-bold uppercase">Device Height:</span>
+                      <span className="font-mono text-cyan-400 font-bold">{phoneHeight.toFixed(1)} mm</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="110" 
+                      max="240" 
+                      step="0.5" 
+                      value={phoneHeight} 
+                      onChange={(e) => {
+                        setPhoneHeight(parseFloat(e.target.value));
+                        setSelectedModel('parametric');
+                      }}
+                      className="w-full accent-cyan-400 bg-zinc-800 cursor-pointer h-1.5 rounded"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-zinc-400 font-bold uppercase">Device Thickness:</span>
+                      <span className="font-mono text-cyan-400 font-bold">{phoneThickness.toFixed(1)} mm</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="5" 
+                      max="18" 
+                      step="0.2" 
+                      value={phoneThickness} 
+                      onChange={(e) => {
+                        setPhoneThickness(parseFloat(e.target.value));
+                        setSelectedModel('parametric');
+                      }}
+                      className="w-full accent-cyan-400 bg-zinc-800 cursor-pointer h-1.5 rounded"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-zinc-400 font-bold uppercase">Bezel Border:</span>
+                      <span className="font-mono text-cyan-400 font-bold">{bezelPadding.toFixed(1)} mm</span>
+                    </div>
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max="14" 
+                      step="0.5" 
+                      value={bezelPadding} 
+                      onChange={(e) => {
+                        setBezelPadding(parseFloat(e.target.value));
+                        setSelectedModel('parametric');
+                      }}
+                      className="w-full accent-cyan-400 bg-zinc-800 cursor-pointer h-1.5 rounded"
+                    />
+                  </div>
+
+                  {/* Notch aperture selection */}
+                  <div className="space-y-1 pt-1">
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">Camera Cutout Style:</span>
+                    <div className="grid grid-cols-4 gap-1 text-[9px]">
+                      {[
+                        { id: 'pill', label: 'Pill' },
+                        { id: 'punchhole', label: 'Hole' },
+                        { id: 'notch', label: 'Notch' },
+                        { id: 'none', label: 'Clean' },
+                      ].map((n) => (
+                        <button
+                          key={n.id}
+                          onClick={() => {
+                            setNotchType(n.id as any);
+                            setSelectedModel('parametric');
+                          }}
+                          className={`p-1.5 rounded-xs border text-center transition-all ${
+                            notchType === n.id 
+                              ? 'bg-cyan-400 text-black border-cyan-400 font-bold' 
+                              : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          {n.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             
             {/* STEPS TAB */}
             {activeTab === 'steps' && (
-              <div className="space-y-4">
-                <div className="flex items-center space-x-2 text-zinc-400 mb-2">
-                  <Scissors className="w-4 h-4 text-[#00ffcc]" />
-                  <span className="text-[10px] font-bold tracking-widest uppercase">Assembly Sequence</span>
-                </div>
-                {modelSpecs[selectedModel].steps.map((step, idx) => {
-                  const [title, body] = step.split(': ');
-                  return (
-                    <div key={idx} className="flex gap-3 text-xs group">
-                      <div className="w-5 h-5 rounded-full bg-zinc-800 text-[#00ffcc] flex items-center justify-center font-bold text-[10px] shrink-0 border border-zinc-700 group-hover:border-[#00ffcc]/50 transition-all">
-                        {idx + 1}
-                      </div>
-                      <div className="space-y-0.5">
-                        <p className="font-bold text-zinc-200 group-hover:text-[#00ffcc] transition-all uppercase tracking-wide text-[10px]">{title}</p>
-                        <p className="text-zinc-400 leading-relaxed text-[11px]">{body}</p>
-                      </div>
+              <div className="space-y-3">
+                <div className="text-[10px] font-bold tracking-widest text-[#00ffcc] uppercase">Assembly Walkthrough</div>
+                {modelSpecs[selectedModel].steps.map((step, idx) => (
+                  <div key={idx} className="flex space-x-3 items-start bg-zinc-950/40 p-2.5 rounded border border-zinc-800/80">
+                    <div className="w-5 h-5 rounded bg-[#00ffcc]/10 border border-[#00ffcc]/40 text-[#00ffcc] flex items-center justify-center text-[10px] font-bold shrink-0">
+                      {idx + 1}
                     </div>
-                  );
-                })}
+                    <p className="text-[11px] text-zinc-300 leading-snug">{step}</p>
+                  </div>
+                ))}
               </div>
             )}
 
             {/* MATERIALS TAB */}
             {activeTab === 'materials' && (
-              <div className="space-y-4">
-                <div className="flex items-center space-x-2 text-zinc-400 mb-2">
-                  <Wrench className="w-4 h-4 text-[#00ffcc]" />
-                  <span className="text-[10px] font-bold tracking-widest uppercase">Sourcing List</span>
-                </div>
-                {materials.map((item, idx) => (
-                  <div key={idx} className="p-3 bg-zinc-950/40 border border-zinc-800/60 rounded-sm">
-                    <div className="flex items-center space-x-2">
+              <div className="space-y-3">
+                <div className="text-[10px] font-bold tracking-widest text-[#00ffcc] uppercase">Required Workshop Tools</div>
+                {materials.map((m, idx) => (
+                  <div key={idx} className="bg-zinc-950/40 p-2.5 rounded border border-zinc-800/80 space-y-1">
+                    <div className="flex items-center space-x-2 text-zinc-200 font-bold text-xs">
                       <Check className="w-3.5 h-3.5 text-[#00ffcc]" />
-                      <p className="font-bold text-zinc-200 uppercase text-[10px] tracking-wide">{item.name}</p>
+                      <span>{m.name}</span>
                     </div>
-                    <p className="text-zinc-400 text-[11px] mt-1 leading-relaxed pl-5">{item.detail}</p>
+                    <p className="text-[10px] text-zinc-400 leading-snug pl-5">{m.detail}</p>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* TIPS TAB */}
+            {/* PRO TIPS TAB */}
             {activeTab === 'tips' && (
-              <div className="space-y-4">
-                <div className="flex items-center space-x-2 text-zinc-400 mb-2">
-                  <Info className="w-4 h-4 text-[#00ffcc]" />
-                  <span className="text-[10px] font-bold tracking-widest uppercase">Expert Origami Advice</span>
-                </div>
+              <div className="space-y-3">
+                <div className="text-[10px] font-bold tracking-widest text-[#00ffcc] uppercase">Master Origami Guidelines</div>
                 {assemblyTips.map((tip, idx) => (
-                  <div key={idx} className="space-y-1">
-                    <p className="font-bold text-zinc-200 text-[10px] uppercase tracking-wide flex items-center space-x-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#00ffcc]" />
-                      <span>{tip.title}</span>
-                    </p>
-                    <p className="text-zinc-400 text-[11px] leading-relaxed pl-3">{tip.text}</p>
+                  <div key={idx} className="bg-zinc-950/40 p-2.5 rounded border border-zinc-800/80 space-y-1">
+                    <div className="font-bold text-xs text-[#00ffcc]">{tip.title}</div>
+                    <p className="text-[10px] text-zinc-400 leading-snug">{tip.text}</p>
                   </div>
                 ))}
               </div>
@@ -337,610 +691,643 @@ export function PaperTemplate({ onClose }: PaperTemplateProps) {
 
           </div>
 
-          {/* FOOTER */}
-          <div className="p-4 border-t border-zinc-800 text-center text-[9px] text-zinc-500">
-            Designed for standard Letter or A4 print scales at 100%.
+          {/* LEGEND & CUT GUIDE */}
+          <div className="p-3 border-t border-zinc-800 bg-zinc-950/80 text-[10px] flex items-center justify-between text-zinc-400">
+            <div className="flex items-center space-x-1.5">
+              <div className="w-4 h-0.5 bg-current" />
+              <span>Solid = Cut Path</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <div className="w-4 h-0.5 border-b-2 border-dashed border-current" />
+              <span>Dashed = Score & Fold</span>
+            </div>
           </div>
         </div>
 
-        {/* RIGHT PANEL: SVG BLUEPRINT VIEWER */}
-        <div className="flex-1 flex flex-col h-full overflow-hidden print:w-full print:h-auto print:overflow-visible relative">
+        {/* RIGHT COLUMN: INTERACTIVE CANVAS VIEW (2D Vector Plan or 3D Folding Simulator) */}
+        <div className="flex-1 flex flex-col p-4 lg:p-6 overflow-hidden relative print:p-0">
           
-          {/* THE CANVAS */}
-          <div className={`flex-1 flex items-center justify-center p-4 overflow-auto relative transition-colors duration-300 print:p-0 print:bg-white ${
-            blueprintStyle === 'blueprint' 
-              ? 'bg-[#14202c] text-[#a4daff]' 
-              : blueprintStyle === 'draft' 
-                ? 'bg-[#f4ebe1] text-[#70523d]' 
-                : 'bg-zinc-100 text-black print:bg-white print:text-black'
-          }`}>
-            
-            {/* Floating Style Label (Hidden on Print) */}
-            <div className="absolute top-4 left-4 flex items-center space-x-1.5 px-2.5 py-1 bg-black/40 text-[10px] font-bold tracking-widest uppercase rounded-sm print:hidden">
-              <span className={`w-2 h-2 rounded-full ${blueprintStyle === 'blueprint' ? 'bg-sky-400' : blueprintStyle === 'draft' ? 'bg-amber-600' : 'bg-zinc-600'}`} />
-              <span>{blueprintStyle} scale</span>
+          {/* IF 3D SIMULATOR MODE */}
+          {viewMode === '3d-simulator' ? (
+            <div className="w-full h-full flex flex-col">
+              <Paper3DFoldingViewer
+                modelType={selectedModel}
+                skinTheme={skinTheme}
+                phoneWidth={phoneWidth}
+                phoneHeight={phoneHeight}
+              />
             </div>
+          ) : (
+            /* IF 2D BLUEPRINT MODE */
+            <div className={`w-full h-full rounded-lg border flex flex-col relative overflow-hidden transition-all duration-300 ${canvasStyle.wrapper}`}>
+              
+              {/* Technical Blueprint Grid Background */}
+              <div 
+                className="absolute inset-0 pointer-events-none opacity-60"
+                style={{
+                  backgroundImage: `linear-gradient(to right, ${canvasStyle.gridLine} 1px, transparent 1px), linear-gradient(to bottom, ${canvasStyle.gridLine} 1px, transparent 1px)`,
+                  backgroundSize: '24px 24px'
+                }}
+              />
 
-            {/* BLUEPRINT GRID BACKGROUND */}
-            {(blueprintStyle === 'blueprint' || blueprintStyle === 'draft') && (
-              <div className="absolute inset-0 pointer-events-none opacity-40">
-                <svg width="100%" height="100%">
-                  <defs>
-                    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="currentColor" strokeWidth="0.5" />
-                    </pattern>
-                  </defs>
-                  <rect width="100%" height="100%" fill="url(#grid)" />
-                </svg>
-              </div>
-            )}
-
-            {/* DYNAMIC BLUEPRINT SVG GENERATION */}
-            <div className="w-full max-w-2xl max-h-[90%] flex items-center justify-center print:max-h-full print:max-w-full print:p-0">
-              {selectedModel === 'iphone-se' && (
-                <svg viewBox="0 0 900 900" className="w-full h-auto stroke-current fill-none transition-all duration-300" strokeWidth="1.5">
-                  <g className="print:text-black">
-                    <text x="450" y="50" textAnchor="middle" className="text-xl font-black fill-current stroke-none tracking-widest uppercase">CLASSIC 16:9 SMARTPHONE CHASSIS</text>
-                    <text x="450" y="75" textAnchor="middle" className="text-xs font-mono fill-current stroke-none tracking-wider opacity-60">— Multi-layer iPhone SE / 8 / 7 Structural Blueprint —</text>
-
-                    {/* Folds (Dashed Lines) */}
-                    <g strokeDasharray="6,6" strokeWidth="1.5" className="opacity-80">
-                      {/* Vertical folds */}
-                      <line x1="260" y1="180" x2="260" y2="680" />
-                      <line x1="300" y1="180" x2="300" y2="680" />
-                      <line x1="560" y1="180" x2="560" y2="680" />
-                      <line x1="600" y1="180" x2="600" y2="680" />
-                      
-                      {/* Horizontal fold flaps */}
-                      <line x1="120" y1="180" x2="260" y2="180" />
-                      <line x1="300" y1="180" x2="560" y2="180" />
-                      <line x1="300" y1="680" x2="560" y2="680" />
-                      <line x1="300" y1="720" x2="560" y2="720" />
-                    </g>
-
-                    {/* Cuts & Boundaries (Solid Lines) */}
-                    {/* BACK FLAP (With Structural Ribs) */}
-                    <g 
-                      className="transition-colors hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Reinforced Back Cover", "The main back plate. Features internal diagonal structural ribs to prevent bowing and support the phone's weight.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <rect x="120" y="180" width="140" height="500" rx="4" />
-                      <path d="M 120 180 L 80 200 L 80 660 L 120 680 Z" />
-                      
-                      {/* Structural Ribs */}
-                      <g className="stroke-current opacity-30" strokeDasharray="2,2">
-                        <line x1="130" y1="200" x2="250" y2="300" />
-                        <line x1="130" y1="300" x2="250" y2="400" />
-                        <line x1="130" y1="400" x2="250" y2="500" />
-                        <line x1="130" y1="500" x2="250" y2="600" />
-                        <line x1="130" y1="600" x2="250" y2="660" />
-                      </g>
-                      
-                      {/* Rear Camera Cutout */}
-                      <rect x="200" y="200" width="45" height="25" rx="12" className="stroke-[2] hover:stroke-red-500" />
-                      <circle cx="215" cy="212" r="6" />
-                      <circle cx="235" cy="212" r="3" />
-                      <text x="222" y="195" textAnchor="middle" className="text-[6px] font-bold">REAR CAMERA HOLE</text>
-                    </g>
-                    
-                    {/* LEFT SPINE SIDE */}
-                    <g 
-                      className="transition-colors hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Left Side Frame", "Provides structural thickness. Contains punch-holes for the volume rockers and mute switch.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <rect x="260" y="180" width="40" height="500" />
-                      {/* Mute / Volume Buttons */}
-                      <rect x="275" y="240" width="10" height="20" rx="2" className="stroke-red-500/50" />
-                      <circle cx="280" cy="285" r="5" className="stroke-red-500/50" />
-                      <circle cx="280" cy="315" r="5" className="stroke-red-500/50" />
-                      <text x="280" y="340" textAnchor="middle" transform="rotate(-90 280 340)" className="text-[8px] opacity-60 font-bold">VOLUME / MUTE PORT</text>
-                    </g>
-
-                    {/* FRONT FLAP */}
-                    <g 
-                      className="transition-colors hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Precision Front Shield", "The primary display panel. Houses exact guides for the classic 16:9 screen, Touch ID, and front sensors.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <rect x="300" y="180" width="260" height="500" rx="4" />
-                      
-                      {/* SCREEN VIEWPORT CUTOUT */}
-                      <rect 
-                        x="320" y="250" width="220" height="360" rx="2"
-                        className="stroke-[2.5] hover:fill-[#00ffcc]/10 hover:stroke-[#00ffcc] transition-all cursor-pointer"
-                      />
-                      
-                      {/* IPHONE SE SPEAKER APERTURE & CAMERA */}
-                      <rect x="405" y="215" width="50" height="6" rx="3" className="stroke-[2] hover:fill-red-500/20" />
-                      <circle cx="380" cy="218" r="5" className="stroke-[2] hover:fill-red-500/20" />
-                      <circle cx="430" cy="205" r="3" className="stroke-current opacity-50" />
-                      
-                      {/* TOUCH ID CIRCULAR BEZEL */}
-                      <circle 
-                        cx="430" cy="645" r="18" strokeDasharray="3,3"
-                        className="hover:fill-current/10"
-                      />
-                      <circle cx="430" cy="645" r="14" className="opacity-30" />
-                    </g>
-
-                    {/* RIGHT SPINE SIDE */}
-                    <g 
-                      className="transition-colors hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Right Side Frame", "Right chassis boundary. Contains the power button cutout guide.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <rect x="560" y="180" width="40" height="500" />
-                      <rect x="575" y="280" width="10" height="35" rx="3" className="stroke-red-500/50" />
-                      <text x="580" y="340" textAnchor="middle" transform="rotate(90 580 340)" className="text-[8px] opacity-60 font-bold">POWER BUTTON</text>
-                    </g>
-
-                    {/* GLUE FLAP */}
-                    <path 
-                      d="M 600 180 L 650 210 L 650 650 L 600 680 Z"
-                      className="transition-colors hover:fill-current/10 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Master Glue Strip", "Apply double-sided tape or strong glue here, then wrap it behind the BACK FLAP to permanently lock the 3D shape.")}
-                      onMouseLeave={handlePartLeave}
-                    />
-
-                    {/* BOTTOM DOCKING FLAP WITH USB ACCESS */}
-                    <g 
-                      className="transition-colors hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Base Speaker & Port Plate", "Secures the bottom. Contains precise cutouts for the stereo speakers and Lightning / USB port.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <path d="M 300 680 L 300 720 L 560 720 L 560 680 Z" />
-                      {/* Port Hole */}
-                      <rect x="400" y="692" width="60" height="16" rx="6" />
-                      {/* Speaker Grills */}
-                      <circle cx="340" cy="700" r="3" />
-                      <circle cx="350" cy="700" r="3" />
-                      <circle cx="360" cy="700" r="3" />
-                      <circle cx="370" cy="700" r="3" />
-                      <circle cx="490" cy="700" r="3" />
-                      <circle cx="500" cy="700" r="3" />
-                      <circle cx="510" cy="700" r="3" />
-                      <circle cx="520" cy="700" r="3" />
-                    </g>
-
-                    {/* Top Dust Caps & Headphone Jack (SE 1st Gen) */}
-                    <g 
-                      className="transition-colors hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Top Dust Cover", "Seals the top edge. Features a retro 3.5mm headphone jack cutout indicator.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <path d="M 300 180 L 300 140 L 560 140 L 560 180 Z" />
-                      <circle cx="340" cy="160" r="6" className="stroke-red-500/50" />
-                      <text x="340" y="130" textAnchor="middle" className="text-[6px] font-bold">3.5mm JACK</text>
-                      
-                      {/* Corner Tabs */}
-                      <path d="M 260 180 L 260 140 L 300 140 L 300 180 Z" className="opacity-30" />
-                      <path d="M 560 180 L 560 140 L 600 140 L 600 180 Z" className="opacity-30" />
-                    </g>
-
-                    {/* Text Annotations inside Blueprint */}
-                    <g className="fill-current stroke-none font-bold text-[10px] opacity-75 font-mono">
-                      <text x="190" y="440" textAnchor="middle" className="text-sm">BACK PANEL</text>
-                      <text x="430" y="440" textAnchor="middle" className="text-sm">DISPLAY VIEWPORT</text>
-                      <text x="430" y="380" textAnchor="middle" className="text-[10px] tracking-widest fill-red-500 font-black">EXCISE SCREEN WINDOW</text>
-                      <text x="430" y="240" textAnchor="middle" className="text-[8px] fill-red-500 font-bold">FACETIME CAMERA & EARPIECE</text>
-                      <text x="430" y="620" textAnchor="middle" className="text-[8px] opacity-60">TOUCH ID / HOME BUTTON</text>
-                      <text x="625" y="440" textAnchor="middle" transform="rotate(90, 625, 440)">STRUCTURAL ADHESIVE TAB</text>
-                      <text x="430" y="740" textAnchor="middle" className="text-[8px]">LIGHTNING / USB-C PORT</text>
-                    </g>
-                  </g>
-                </svg>
+              {/* Hover Tooltip Overlay HUD */}
+              {hoveredPart && (
+                <div className="absolute top-4 left-4 z-20 bg-zinc-950/90 border border-[#00ffcc] text-zinc-100 p-3 rounded shadow-lg max-w-sm pointer-events-none font-mono animate-fadeIn">
+                  <div className="flex items-center space-x-2 text-[#00ffcc] font-bold text-xs uppercase tracking-wider">
+                    <Info className="w-3.5 h-3.5" />
+                    <span>{hoveredPart}</span>
+                  </div>
+                  {hoveredDescription && (
+                    <p className="text-[10px] text-zinc-300 mt-1 leading-snug">{hoveredDescription}</p>
+                  )}
+                </div>
               )}
 
-              {selectedModel === 'bezel-less' && (
-                <svg viewBox="0 0 900 900" className="w-full h-auto stroke-current fill-none transition-all duration-300" strokeWidth="1.5">
-                  <g className="print:text-black">
-                    <text x="450" y="50" textAnchor="middle" className="text-xl font-black fill-current stroke-none tracking-widest uppercase">BEZEL-LESS WRAPAROUND HOUSING</text>
-                    <text x="450" y="75" textAnchor="middle" className="text-xs font-mono fill-current stroke-none tracking-wider opacity-60">— Advanced 360° Sleeve Construction Guide —</text>
+              {/* Blueprint Vector Canvas Stage */}
+              <div ref={svgContainerRef} className="flex-1 w-full flex items-center justify-center p-4 overflow-auto">
+                
+                {/* ================= MODEL 1: CYBER MAC 1984 VINTAGE DESKTOP ================= */}
+                {selectedModel === 'cyber-mac' && (
+                  <svg viewBox="0 0 900 900" className="w-full max-h-[92%] h-auto stroke-current fill-none transition-all duration-300 font-mono" strokeWidth="1.5">
+                    <g className="print:text-black">
+                      {/* Blueprint Header */}
+                      <text x="450" y="45" textAnchor="middle" className="text-xl font-black fill-current stroke-none tracking-widest uppercase">MAC-PET 1984 VINTAGE ENCLOSURE</text>
+                      <text x="450" y="68" textAnchor="middle" className="text-xs font-mono fill-current stroke-none tracking-wider opacity-70">
+                        — Scale 1:1 True Dimensions • Retro CRT Viewport with Fold-Out 20° Easel Wedge —
+                      </text>
 
-                    {/* Dashed Folds */}
-                    <g strokeDasharray="6,6" strokeWidth="1.5" className="opacity-80">
-                      <line x1="280" y1="180" x2="280" y2="720" />
-                      <line x1="320" y1="180" x2="320" y2="720" />
-                      <line x1="620" y1="180" x2="620" y2="720" />
-                      <line x1="660" y1="180" x2="660" y2="720" />
-                      
-                      <line x1="100" y1="180" x2="280" y2="180" />
-                      <line x1="320" y1="180" x2="620" y2="180" />
-                      
-                      <line x1="320" y1="720" x2="620" y2="720" />
-                      <line x1="320" y1="760" x2="620" y2="760" />
-
-                      <line x1="150" y1="180" x2="150" y2="720" />
-                    </g>
-
-                    {/* Main Back Panel */}
-                    <g 
-                      className="transition-colors hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Main Structural Back", "Heavy-duty back panel supporting the inner skeleton. Paste to cardboard for extra rigidity.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <rect x="150" y="180" width="130" height="540" />
-                      <path d="M 150 180 L 100 200 L 100 700 L 150 720 Z" />
-                      {/* Inner shock absorber lines */}
-                      <path d="M 170 200 L 260 200 L 260 700 L 170 700 Z" className="stroke-current opacity-30" strokeDasharray="2,2" />
-                      <text x="215" y="450" textAnchor="middle" transform="rotate(-90 215 450)" className="text-[10px] fill-current stroke-none font-bold opacity-60">CORRUGATED SHOCK ABSORBER</text>
-                    </g>
-
-                    {/* Front Face / Screen Plate */}
-                    <g 
-                      className="transition-colors hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Edge-to-Edge Screen Plate", "Front-facing sleeve. Features precise corners for maximum screen-to-body ratio viewing.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <rect x="320" y="180" width="300" height="540" rx="4" />
-                      {/* Viewport Cutout */}
-                      <rect x="335" y="195" width="270" height="510" rx="28" className="stroke-[2.5] hover:fill-[#00ffcc]/10 hover:stroke-[#00ffcc] transition-all" />
-                      <text x="470" y="450" textAnchor="middle" className="text-[12px] fill-current stroke-none font-black opacity-30 tracking-widest">BEZEL-LESS VIEWPORT</text>
-                    </g>
-
-                    {/* Left & Right Spines (Frame depth) */}
-                    <rect x="280" y="180" width="40" height="540" className="hover:fill-current/5 transition-colors" />
-                    <rect x="620" y="180" width="40" height="540" className="hover:fill-current/5 transition-colors" />
-                    <text x="300" y="450" textAnchor="middle" transform="rotate(-90 300 450)" className="text-[8px] fill-current stroke-none font-bold opacity-60">LEFT EDGE (40mm THICK)</text>
-                    <text x="640" y="450" textAnchor="middle" transform="rotate(90 640 450)" className="text-[8px] fill-current stroke-none font-bold opacity-60">RIGHT EDGE (40mm THICK)</text>
-
-                    {/* Dynamic Island Notch Cutout */}
-                    <rect 
-                      x="425" y="210" width="90" height="24" rx="12"
-                      className="stroke-[2] hover:fill-red-500/10 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Dynamic Island / Notch Gap", "CRITICAL SENSOR GAP: Remove this dynamic island pill cutout so the FaceID/front camera has unobstructed depth monitoring.")}
-                      onMouseLeave={handlePartLeave}
-                    />
-                    <line x1="515" y1="222" x2="550" y2="222" stroke="red" strokeDasharray="2,2" />
-                    <text x="555" y="225" className="text-[8px] fill-red-500 stroke-none font-bold">REMOVE FOR CAMERAS</text>
-
-                    {/* Top Corner Bumpers */}
-                    <g 
-                      className="transition-colors hover:fill-current/10 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Corner Bumpers", "Fold these over the top corners to lock the phone vertically and provide drop protection.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <path d="M 320 180 L 320 120 L 360 120 L 360 180 Z" />
-                      <path d="M 580 180 L 580 120 L 620 120 L 620 180 Z" />
-                      <text x="340" y="150" textAnchor="middle" className="text-[8px] fill-current stroke-none font-bold">FLAP A</text>
-                      <text x="600" y="150" textAnchor="middle" className="text-[8px] fill-current stroke-none font-bold">FLAP B</text>
-                    </g>
-
-                    {/* Bottom Flap & Charger Port */}
-                    <path 
-                      d="M 320 720 L 320 760 L 620 760 L 620 720 Z"
-                      className="hover:fill-current/5 cursor-pointer transition-colors"
-                      onMouseEnter={() => handlePartHover("Bottom Chassis Wrap", "Wraps around the bottom of the device, sealing the housing structure.")}
-                      onMouseLeave={handlePartLeave}
-                    />
-                    {/* Charger Hole */}
-                    <rect x="420" y="730" width="100" height="20" rx="4" />
-                    <text x="470" y="744" textAnchor="middle" className="text-[8px] fill-current stroke-none font-bold">USB/LIGHTNING PORT</text>
-
-                    {/* Master Glue Flap */}
-                    <path 
-                      d="M 660 180 L 710 210 L 710 690 L 660 720 Z"
-                      className="hover:fill-current/10 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Master Glue Flap", "Connects the entire continuous shell together. Apply strong double-sided tape here.")}
-                      onMouseLeave={handlePartLeave}
-                    />
-                    <text x="685" y="450" textAnchor="middle" transform="rotate(90 685 450)" className="text-[10px] fill-current stroke-none font-bold opacity-60">APPLY ADHESIVE HERE</text>
-                  </g>
-                </svg>
-              )}
-
-              {selectedModel === 'arcade' && (
-                <svg viewBox="0 0 900 900" className="w-full h-auto stroke-current fill-none transition-all duration-300" strokeWidth="1.5">
-                  <g className="print:text-black">
-                    <text x="450" y="40" textAnchor="middle" className="text-xl font-black fill-current stroke-none tracking-widest uppercase">RETRO ARCADE CABINET BLUEPRINT</text>
-                    <text x="450" y="65" textAnchor="middle" className="text-xs font-mono fill-current stroke-none tracking-wider opacity-60">— Advanced 3D Papercraft Assembly Guide —</text>
-
-                    {/* LEFT WING PROFILE */}
-                    <g 
-                      className="transition-all hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Left Wing Profile", "The signature left arcade cabinet wall. Detailed with coin-op mechanical styling and anchor slots.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <path d="M 60 120 L 220 120 L 220 170 L 260 170 L 260 270 L 190 350 L 190 620 L 60 620 Z" />
-                      {/* Anchor Slots on side wing */}
-                      <line x1="80" y1="150" x2="80" y2="230" stroke="red" strokeWidth="3" />
-                      <line x1="160" y1="380" x2="160" y2="450" stroke="red" strokeWidth="3" />
-                      <line x1="120" y1="520" x2="120" y2="590" stroke="red" strokeWidth="3" />
-                      {/* Decals */}
-                      <path d="M 80 270 L 120 270 L 120 310" strokeDasharray="2,2" className="opacity-30" />
-                      <circle cx="210" cy="580" r="10" className="opacity-40" />
-                      <circle cx="210" cy="580" r="4" className="opacity-40" />
-                      <text x="130" y="450" textAnchor="middle" transform="rotate(-90 130 450)" className="text-[10px] fill-current stroke-none font-bold opacity-50">L-CABINET WALL</text>
-                    </g>
-
-                    {/* RIGHT WING PROFILE */}
-                    <g 
-                      className="transition-all hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Right Wing Profile", "Symmetrical right arcade enclosure piece. Slot cuts match the left wing.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <path d="M 840 120 L 680 120 L 680 170 L 640 170 L 640 270 L 710 350 L 710 620 L 840 620 Z" />
-                      <line x1="820" y1="150" x2="820" y2="230" stroke="red" strokeWidth="3" />
-                      <line x1="740" y1="380" x2="740" y2="450" stroke="red" strokeWidth="3" />
-                      <line x1="780" y1="520" x2="780" y2="590" stroke="red" strokeWidth="3" />
-                      <path d="M 820 270 L 780 270 L 780 310" strokeDasharray="2,2" className="opacity-30" />
-                      <circle cx="690" cy="580" r="10" className="opacity-40" />
-                      <circle cx="690" cy="580" r="4" className="opacity-40" />
-                      <text x="770" y="450" textAnchor="middle" transform="rotate(90 770 450)" className="text-[10px] fill-current stroke-none font-bold opacity-50">R-CABINET WALL</text>
-                    </g>
-
-                    {/* MAIN SPINE STRIP (FOLDABLE) */}
-                    <g 
-                      className="transition-all hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Central Console Strip", "Long central sheet containing folding blocks for the Marquee header, the screen cradle, joystick shelf, and coin box.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      {/* Spine boundary */}
-                      <rect x="290" y="120" width="360" height="650" rx="2" />
-                      
-                      {/* Spine folds */}
-                      <g strokeDasharray="5,5">
-                        <line x1="290" y1="210" x2="650" y2="210" />
-                        <line x1="290" y1="310" x2="650" y2="310" />
-                        <line x1="290" y1="520" x2="650" y2="520" />
-                        <line x1="290" y1="620" x2="650" y2="620" />
+                      {/* 50mm Calibration Scale Bar */}
+                      <g className="fill-current stroke-none font-mono text-[9px]">
+                        <rect x="50" y="820" width="140" height="4" fill="currentColor" />
+                        <line x1="50" y1="812" x2="50" y2="832" stroke="currentColor" strokeWidth="2" />
+                        <line x1="120" y1="816" x2="120" y2="828" stroke="currentColor" strokeWidth="1" />
+                        <line x1="190" y1="812" x2="190" y2="832" stroke="currentColor" strokeWidth="2" />
+                        <text x="50" y="805" textAnchor="start" className="font-bold">0mm</text>
+                        <text x="120" y="805" textAnchor="middle">25mm</text>
+                        <text x="190" y="805" textAnchor="end" className="font-bold">50mm SCALE</text>
+                        <text x="50" y="846" textAnchor="start" className="text-[8px] opacity-60">Check with ruler on print (100% scale)</text>
                       </g>
 
-                      {/* Header Marquee Text */}
-                      <text x="470" y="170" textAnchor="middle" className="text-xl fill-current stroke-none font-black opacity-30 tracking-widest uppercase">INSERT COIN</text>
-
-                      {/* Screen viewing window cutout */}
-                      <rect 
-                        x="330" y="340" width="280" height="150" rx="8"
-                        className="stroke-[2.5] hover:fill-[#00ffcc]/10 hover:stroke-[#00ffcc] transition-all"
-                        onMouseEnter={(e) => {
-                          e.stopPropagation();
-                          handlePartHover("Arcade Display Aperture", "SCREEN HOLE: Cut this window out so your phone screen peeks out from the interior diagonal holster.");
-                        }}
-                      />
-                      <text x="470" y="420" textAnchor="middle" className="text-[12px] fill-red-500 stroke-none font-black opacity-80 tracking-widest">CUT DISPLAY WINDOW</text>
-
-                      {/* Joypad & Coin Door Decals */}
-                      {/* Joystick Base */}
-                      <g className="fill-current stroke-none opacity-60">
-                        <circle cx="360" cy="570" r="14" />
-                        <line x1="360" y1="550" x2="360" y2="590" stroke="currentColor" strokeWidth="3" />
-                        <line x1="340" y1="570" x2="380" y2="570" stroke="currentColor" strokeWidth="3" />
+                      {/* Score Lines (Dashed Folds) */}
+                      <g strokeDasharray="6,6" strokeWidth="1.5" className="opacity-80">
+                        {/* Side wall folds */}
+                        <line x1="260" y1="120" x2="260" y2="680" />
+                        <line x1="640" y1="120" x2="640" y2="680" />
+                        <line x1="180" y1="120" x2="180" y2="680" />
+                        <line x1="720" y1="120" x2="720" y2="680" />
                         
-                        <circle cx="510" cy="570" r="10" fill="red" />
-                        <circle cx="545" cy="570" r="10" fill="red" />
-                        <circle cx="580" cy="570" r="10" fill="red" />
-                        <text x="545" y="595" textAnchor="middle" className="text-[8px] font-bold">A B C</text>
+                        {/* Rear Easel fold */}
+                        <line x1="300" y1="680" x2="600" y2="680" />
+                        <line x1="300" y1="760" x2="600" y2="760" />
                       </g>
-                      
-                      {/* Coin box */}
-                      <g className="stroke-current opacity-80" strokeWidth="1.5">
-                        <rect x="420" y="660" width="100" height="90" rx="4" />
-                        <rect x="435" y="670" width="25" height="40" rx="2" />
-                        <rect x="480" y="670" width="25" height="40" rx="2" />
-                        <line x1="447" y1="680" x2="447" y2="695" strokeWidth="2" stroke="red" />
-                        <line x1="492" y1="680" x2="492" y2="695" strokeWidth="2" stroke="red" />
-                        <text x="470" y="735" textAnchor="middle" className="text-[10px] fill-current stroke-none font-bold">25¢ COIN RETURN</text>
+
+                      {/* Solid Cut Lines */}
+                      {/* Left Chassis Wing */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Left Cooling Vents Wall", "Folds backward at 90° to form the rigid left side of the vintage Mac chassis.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <path d="M 260 120 L 180 160 L 180 640 L 260 680 Z" />
+                        <text x="215" y="400" textAnchor="middle" transform="rotate(-90 215 400)" className="text-[9px] fill-current stroke-none font-bold opacity-60">
+                          LEFT WALL (VENTILATION)
+                        </text>
+                        {/* Vents artwork */}
+                        {[220, 260, 300, 340, 380, 420, 460].map((y) => (
+                          <line key={y} x1="200" y1={y} x2="240" y2={y} stroke="currentColor" strokeWidth="1" />
+                        ))}
                       </g>
-                    </g>
 
-                    {/* Decorative Accessory: Cat Ears */}
-                    <g 
-                      className="transition-all hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Visual Cat Ears Accessory", "Decorative cat ears! Cut these out and glue them on top of your cabinet marquee header.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <path d="M 330 850 L 380 770 L 430 850 Z" />
-                      <line x1="330" y1="850" x2="430" y2="850" strokeDasharray="3,3" />
-                      <path d="M 510 850 L 560 770 L 610 850 Z" />
-                      <line x1="510" y1="850" x2="610" y2="850" strokeDasharray="3,3" />
-                    </g>
-
-                    {/* Wedge Block (Internal Support) */}
-                    <g 
-                      className="transition-all hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Internal Phone Holster Support", "Fold this wedge and glue it inside the cabinet. It rests behind the phone to hold it at a perfect viewing angle.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <rect x="100" y="680" width="180" height="150" />
-                      <line x1="100" y1="730" x2="280" y2="730" strokeDasharray="4,4" />
-                      <line x1="100" y1="780" x2="280" y2="780" strokeDasharray="4,4" />
-                      <text x="190" y="705" textAnchor="middle" className="text-[10px] fill-current stroke-none font-bold opacity-60">INTERNAL SUPPORT</text>
-                    </g>
-
-                  </g>
-                </svg>
-              )}
-
-              {selectedModel === 'robot' && (
-                <svg viewBox="0 0 900 900" className="w-full h-auto stroke-current fill-none transition-all duration-300" strokeWidth="1.5">
-                  <g className="print:text-black">
-                    <text x="450" y="40" textAnchor="middle" className="text-xl font-black fill-current stroke-none tracking-widest uppercase">ROBOT MECH-SUIT DOCK BLUEPRINT</text>
-                    <text x="450" y="65" textAnchor="middle" className="text-xs font-mono fill-current stroke-none tracking-wider opacity-60">— Advanced Articulated Cybernetic Frame —</text>
-
-                    {/* MAIN ROBOT BOARD PLATE */}
-                    <g 
-                      className="transition-all hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Mech Core Chassis", "The massive central body holding your phone. Detailed with hydraulic tubing and heat-sink grills.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      {/* Backplate contour */}
-                      <path d="M 280 180 L 340 100 L 560 100 L 620 180 L 620 540 L 560 620 L 340 620 L 280 540 Z" />
-                      
-                      {/* Inner phone cavity outline */}
-                      <rect x="320" y="160" width="260" height="420" rx="8" className="stroke-current opacity-30" strokeDasharray="3,3" />
-                      
-                      {/* Fold line for arm clamps */}
-                      <line x1="280" y1="300" x2="280" y2="440" strokeDasharray="4,4" />
-                      <line x1="620" y1="300" x2="620" y2="440" strokeDasharray="4,4" />
-
-                      {/* Decorative robot face/chest details */}
-                      <g className="stroke-current opacity-40" strokeWidth="1.5">
-                        <circle cx="410" cy="140" r="18" />
-                        <circle cx="490" cy="140" r="18" />
-                        <rect x="420" y="180" width="60" height="12" rx="4" />
-                        {/* Heat sink grills */}
-                        <line x1="330" y1="580" x2="400" y2="580" />
-                        <line x1="330" y1="590" x2="400" y2="590" />
-                        <line x1="330" y1="600" x2="400" y2="600" />
+                      {/* Main Front Bezel Body */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Front CRT Faceplate", "Main display housing featuring the vintage CRT curved viewport, rainbow badge, and floppy slot.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <rect x="260" y="120" width="380" height="560" rx="16" />
                         
-                        <line x1="500" y1="580" x2="570" y2="580" />
-                        <line x1="500" y1="590" x2="570" y2="590" />
-                        <line x1="500" y1="600" x2="570" y2="600" />
+                        {/* Top Mac Bevel & Apple Rainbow Logo */}
+                        <rect x="290" y="145" width="320" height="24" rx="4" />
+                        <circle cx="310" cy="157" r="5" className="fill-current" />
+                        <text x="330" y="161" className="text-[10px] fill-current stroke-none font-black">MAC-PET 128k</text>
+                        <text x="590" y="161" textAnchor="end" className="text-[8px] fill-current stroke-none font-mono opacity-70">1984 ED.</text>
+
+                        {/* CRT Screen Bezel Cutout */}
+                        <rect 
+                          x="295" 
+                          y="190" 
+                          width="310" 
+                          height="400" 
+                          rx="24" 
+                          className="stroke-[2.5] hover:stroke-red-400 hover:fill-red-500/10 transition-all"
+                        />
+                        <text x="450" y="380" textAnchor="middle" className="text-xs fill-current stroke-none font-black opacity-40 tracking-widest">
+                          EXCISE CRT SCREEN WINDOW
+                        </text>
                         
-                        {/* Printed tracks (PCB decoration) */}
-                        <path d="M 320 220 L 370 220 L 390 240 L 390 300" strokeWidth="2" />
-                        <circle cx="390" cy="300" r="5" fill="currentColor" />
-                        <path d="M 580 220 L 530 220 L 510 240 L 510 300" strokeWidth="2" />
-                        <circle cx="510" cy="300" r="5" fill="currentColor" />
+                        {/* Camera Aperture / Dynamic Island Notch */}
+                        <rect x="420" y="200" width="60" height="12" rx="6" className="stroke-[2] hover:fill-red-500/20" />
+                        <text x="450" y="222" textAnchor="middle" className="text-[7px] fill-current stroke-none font-bold">CAM SENSOR APERTURE</text>
+
+                        {/* Bottom 3.5" Floppy Disk Slot Artwork */}
+                        <rect x="300" y="615" width="240" height="14" rx="3" className="stroke-[2]" />
+                        <rect x="555" y="618" width="8" height="8" rx="1" />
+                        <text x="310" y="645" className="text-[7px] fill-current stroke-none font-mono opacity-60">AUTO-EJECT FLOPPY DRIVE</text>
                       </g>
-                    </g>
 
-                    {/* ARTICULATING GRIPPING ARMS */}
-                    <g 
-                      className="transition-all hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Hydraulic Gripper Arms", "Fold these horizontal appendages forward at the joints. They wrap around the phone, mimicking robot claws.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      {/* Left Arm */}
-                      <path d="M 280 300 L 150 320 L 150 420 L 280 440 Z" />
-                      <line x1="230" y1="310" x2="230" y2="430" strokeDasharray="3,3" />
-                      <line x1="180" y1="316" x2="180" y2="424" strokeDasharray="3,3" />
-                      <circle cx="190" cy="370" r="10" className="opacity-40" />
-                      
-                      {/* Right Arm */}
-                      <path d="M 620 300 L 750 320 L 750 420 L 620 440 Z" />
-                      <line x1="670" y1="310" x2="670" y2="430" strokeDasharray="3,3" />
-                      <line x1="720" y1="316" x2="720" y2="424" strokeDasharray="3,3" />
-                      <circle cx="710" cy="370" r="10" className="opacity-40" />
-                    </g>
-
-                    {/* REAR TRIANGULAR A-FRAME (HYDRAULIC STRUT) */}
-                    <g 
-                      className="transition-all hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Hydraulic Support Strut", "Fold this massive reinforced leg backward. Features printed hydraulic cylinders for extra mechanical flair.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <path d="M 340 620 L 340 820 L 400 860 L 500 860 L 560 820 L 560 620 Z" />
-                      <line x1="340" y1="670" x2="560" y2="670" strokeDasharray="5,5" />
-                      <line x1="340" y1="760" x2="560" y2="760" strokeDasharray="5,5" />
-                      
-                      {/* Hydraulic Pistons Decal */}
-                      <g className="stroke-current opacity-40">
-                        <rect x="420" y="690" width="20" height="50" rx="3" />
-                        <rect x="425" y="740" width="10" height="30" />
-                        <rect x="460" y="690" width="20" height="50" rx="3" />
-                        <rect x="465" y="740" width="10" height="30" />
+                      {/* Right Chassis Wing */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Right Power & I/O Wall", "Folds backward at 90° to form the right side panel with peripheral port guides.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <path d="M 640 120 L 720 160 L 720 640 L 640 680 Z" />
+                        <text x="685" y="400" textAnchor="middle" transform="rotate(90 685 400)" className="text-[9px] fill-current stroke-none font-bold opacity-60">
+                          RIGHT WALL (POWER / I/O)
+                        </text>
+                        {/* Port artwork */}
+                        <rect x="665" y="480" width="30" height="40" rx="4" />
+                        <circle cx="680" cy="380" r="8" />
                       </g>
+
+                      {/* Bottom Fold-Out 20° Easel Kickstand */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("20° Desktop Easel Wedge", "Folds underneath to elevate the screen at an ergonomic 20° angle with a built-in charging cable routing cutout.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <path d="M 300 680 L 300 840 L 600 840 L 600 680 Z" />
+                        {/* Charging Cable Routing Hole */}
+                        <rect x="420" y="700" width="60" height="24" rx="8" className="stroke-[2] hover:fill-[#00ffcc]/10" />
+                        <text x="450" y="745" textAnchor="middle" className="text-[8px] fill-current stroke-none font-bold opacity-70">
+                          USB-C CABLE ROUTING CANAL
+                        </text>
+                        <text x="450" y="800" textAnchor="middle" className="text-[9px] fill-current stroke-none font-black tracking-wider">
+                          20° ERGONOMIC DESK WEDGE (FOLD BACK)
+                        </text>
+                      </g>
+
                     </g>
-
-                    {/* BASE DOCK TRAY */}
-                    <g 
-                      className="transition-all hover:fill-current/5 cursor-pointer"
-                      onMouseEnter={() => handlePartHover("Base Dock Tray", "A small platform extending from the bottom to catch the phone securely.")}
-                      onMouseLeave={handlePartLeave}
-                    >
-                      <path d="M 380 620 L 380 660 L 520 660 L 520 620 Z" />
-                      <line x1="380" y1="640" x2="520" y2="640" strokeDasharray="2,2" />
-                      <text x="450" y="655" textAnchor="middle" className="text-[8px] fill-current stroke-none font-bold opacity-70">FOLD UP TRAY</text>
-                    </g>
-
-                    {/* Labels */}
-                    <g className="fill-current stroke-none font-bold text-[10px] opacity-75 font-mono">
-                      <text x="450" y="280" textAnchor="middle" className="text-sm">MECH CORE CHASSIS</text>
-                      <text x="450" y="380" textAnchor="middle" className="text-[10px] opacity-50 tracking-widest">PLACE PHONE HERE</text>
-                      <text x="120" y="375" textAnchor="middle" transform="rotate(-90 120 375)" className="text-[8px]">L-HYDRAULIC CLAW</text>
-                      <text x="780" y="375" textAnchor="middle" transform="rotate(90 780 375)" className="text-[8px]">R-HYDRAULIC CLAW</text>
-                      <text x="450" y="800" textAnchor="middle">REAR STRUT LEG (A-FRAME)</text>
-                      <text x="450" y="125" textAnchor="middle" className="text-[8px] opacity-55">OPTIC SENSORS</text>
-                    </g>
-                  </g>
-                </svg>
-              )}
-            </div>
-
-          </div>
-
-          {/* HOVER DETAILS PANEL (Hidden on Print) */}
-          <div className="p-4 border-t border-zinc-800 bg-[#0f1216] flex items-center justify-between min-h-[70px] shrink-0 print:hidden">
-            <div className="flex items-start space-x-3 max-w-3xl">
-              <div className="p-2 rounded-sm bg-[#00ffcc]/10 text-[#00ffcc] mt-0.5">
-                <Layers className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-[10px] font-black tracking-widest text-zinc-400 uppercase">Interactive Part Inspector</p>
-                {hoveredPart ? (
-                  <p className="text-xs text-white mt-0.5">
-                    <strong className="text-[#00ffcc] uppercase font-bold tracking-wide">{hoveredPart}:</strong> {hoveredDescription}
-                  </p>
-                ) : (
-                  <p className="text-xs text-zinc-500 mt-0.5 italic">Hover over any blueprint component to inspect cutting instructions, folding directions, and functional descriptions.</p>
+                  </svg>
                 )}
+
+                {/* ================= MODEL 2: MECH-PET GUNDAM VISOR ================= */}
+                {selectedModel === 'mech-pet' && (
+                  <svg viewBox="0 0 900 900" className="w-full max-h-[92%] h-auto stroke-current fill-none transition-all duration-300 font-mono" strokeWidth="1.5">
+                    <g className="print:text-black">
+                      <text x="450" y="45" textAnchor="middle" className="text-xl font-black fill-current stroke-none tracking-widest uppercase">MECH-PET GUNDAM EXOSKELETON</text>
+                      <text x="450" y="68" textAnchor="middle" className="text-xs font-mono fill-current stroke-none tracking-wider opacity-70">
+                        — Pop-Up Antenna Ears • Articulated Grip Paws • Heavy PCB Exoskeleton —
+                      </text>
+
+                      {/* 50mm Calibration Scale Bar */}
+                      <g className="fill-current stroke-none font-mono text-[9px]">
+                        <rect x="50" y="820" width="140" height="4" fill="currentColor" />
+                        <line x1="50" y1="812" x2="50" y2="832" stroke="currentColor" strokeWidth="2" />
+                        <line x1="120" y1="816" x2="120" y2="828" stroke="currentColor" strokeWidth="1" />
+                        <line x1="190" y1="812" x2="190" y2="832" stroke="currentColor" strokeWidth="2" />
+                        <text x="50" y="805" textAnchor="start" className="font-bold">0mm</text>
+                        <text x="120" y="805" textAnchor="middle">25mm</text>
+                        <text x="190" y="805" textAnchor="end" className="font-bold">50mm SCALE</text>
+                      </g>
+
+                      {/* Dashed Folds */}
+                      <g strokeDasharray="6,6" strokeWidth="1.5" className="opacity-80">
+                        {/* Ears fold */}
+                        <line x1="280" y1="140" x2="380" y2="140" />
+                        <line x1="520" y1="140" x2="620" y2="140" />
+                        {/* Paws fold */}
+                        <line x1="260" y1="640" x2="360" y2="640" />
+                        <line x1="540" y1="640" x2="640" y2="640" />
+                        {/* Rear Strut fold */}
+                        <line x1="320" y1="700" x2="580" y2="700" />
+                      </g>
+
+                      {/* Pop-Up Ear Left */}
+                      <g 
+                        className="transition-colors hover:fill-current/10 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Left Mecha Antenna Ear", "Pop-up triangular ear antenna with robotic circuit decals. Folds forward 15°.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <path d="M 280 140 L 300 40 L 380 140 Z" />
+                        <circle cx="320" cy="100" r="6" />
+                        <line x1="300" y1="40" x2="320" y2="100" strokeWidth="1" />
+                      </g>
+
+                      {/* Pop-Up Ear Right */}
+                      <g 
+                        className="transition-colors hover:fill-current/10 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Right Mecha Antenna Ear", "Pop-up triangular ear antenna with robotic circuit decals. Folds forward 15°.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <path d="M 520 140 L 600 40 L 620 140 Z" />
+                        <circle cx="580" cy="100" r="6" />
+                        <line x1="600" y1="40" x2="580" y2="100" strokeWidth="1" />
+                      </g>
+
+                      {/* Main Mecha Body Armor */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Mecha Body Exoskeleton", "Main armored chestplate with hexagonal visor framing.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <path d="M 240 140 L 660 140 L 680 640 L 220 640 Z" />
+                        
+                        {/* Hexagonal Visor Cutout */}
+                        <path 
+                          d="M 300 200 L 600 200 L 620 540 L 280 540 Z" 
+                          className="stroke-[2.5] hover:stroke-red-400 hover:fill-red-500/10 transition-all"
+                        />
+                        <text x="450" y="370" textAnchor="middle" className="text-xs fill-current stroke-none font-black opacity-40 tracking-widest">
+                          EXCISE MECHA VISOR APERTURE
+                        </text>
+
+                        {/* Cyber Decals */}
+                        <text x="260" y="170" className="text-[9px] fill-current stroke-none font-black">UNIT-01 // TACTICAL SOUL</text>
+                        <text x="640" y="170" textAnchor="end" className="text-[8px] fill-current stroke-none font-mono">SPEC: GUNDAM-AI</text>
+                      </g>
+
+                      {/* Left Clamping Paw */}
+                      <g 
+                        className="transition-colors hover:fill-current/10 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Left Safety Paw Claw", "Folds forward 90° to catch and support the base of your smartphone.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <path d="M 260 640 L 240 720 L 360 720 L 360 640 Z" />
+                        <text x="300" y="685" textAnchor="middle" className="text-[8px] fill-current stroke-none font-bold">LEFT PAW</text>
+                      </g>
+
+                      {/* Right Clamping Paw */}
+                      <g 
+                        className="transition-colors hover:fill-current/10 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Right Safety Paw Claw", "Folds forward 90° to catch and support the base of your smartphone.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <path d="M 540 640 L 540 720 L 660 720 L 640 640 Z" />
+                        <text x="600" y="685" textAnchor="middle" className="text-[8px] fill-current stroke-none font-bold">RIGHT PAW</text>
+                      </g>
+
+                      {/* Rear Exoskeleton Kickstand */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Rear A-Frame Stabilizer", "Folds backward at 45° to provide stable tripod desktop balance.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <path d="M 320 700 L 400 860 L 500 860 L 580 700 Z" />
+                        <text x="450" y="780" textAnchor="middle" className="text-[9px] fill-current stroke-none font-black">
+                          A-FRAME REAR TRIPOD STRUT
+                        </text>
+                      </g>
+                    </g>
+                  </svg>
+                )}
+
+                {/* ================= MODEL 3: RETRO ARCADE MINI-CABINET ================= */}
+                {selectedModel === 'arcade' && (
+                  <svg viewBox="0 0 900 900" className="w-full max-h-[92%] h-auto stroke-current fill-none transition-all duration-300 font-mono" strokeWidth="1.5">
+                    <g className="print:text-black">
+                      <text x="450" y="45" textAnchor="middle" className="text-xl font-black fill-current stroke-none tracking-widest uppercase">RETRO ARCADE MINI-CABINET</text>
+                      <text x="450" y="68" textAnchor="middle" className="text-xs font-mono fill-current stroke-none tracking-wider opacity-70">
+                        — Marquee Header • Coin-Op Deck • Side Artwork Wings —
+                      </text>
+
+                      {/* 50mm Calibration Scale Bar */}
+                      <g className="fill-current stroke-none font-mono text-[9px]">
+                        <rect x="50" y="820" width="140" height="4" fill="currentColor" />
+                        <line x1="50" y1="812" x2="50" y2="832" stroke="currentColor" strokeWidth="2" />
+                        <line x1="120" y1="816" x2="120" y2="828" stroke="currentColor" strokeWidth="1" />
+                        <line x1="190" y1="812" x2="190" y2="832" stroke="currentColor" strokeWidth="2" />
+                        <text x="50" y="805" textAnchor="start" className="font-bold">0mm</text>
+                        <text x="120" y="805" textAnchor="middle">25mm</text>
+                        <text x="190" y="805" textAnchor="end" className="font-bold">50mm SCALE</text>
+                      </g>
+
+                      {/* Dashed Folds */}
+                      <g strokeDasharray="6,6" strokeWidth="1.5" className="opacity-80">
+                        <line x1="280" y1="120" x2="280" y2="680" />
+                        <line x1="620" y1="120" x2="620" y2="680" />
+                        <line x1="280" y1="200" x2="620" y2="200" />
+                        <line x1="280" y1="600" x2="620" y2="600" />
+                      </g>
+
+                      {/* Top Marquee Header */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Arcade Marquee Header", "Lighted banner overhang with classic coin-op typography.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <rect x="280" y="120" width="340" height="80" rx="4" />
+                        <text x="450" y="165" textAnchor="middle" className="text-sm font-black fill-current stroke-none tracking-widest uppercase">★ CYBER PET ARCADE ★</text>
+                        <text x="450" y="185" textAnchor="middle" className="text-[8px] fill-current stroke-none font-mono opacity-70">INSERT COIN TO PLAY</text>
+                      </g>
+
+                      {/* Main Slanted Screen Bezel */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Arcade CRT Display Bezel", "Excise to reveal your companion's face inside the arcade cabinet.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <rect x="280" y="200" width="340" height="400" />
+                        <rect 
+                          x="305" 
+                          y="225" 
+                          width="290" 
+                          height="350" 
+                          rx="16" 
+                          className="stroke-[2.5] hover:stroke-red-400 hover:fill-red-500/10 transition-all"
+                        />
+                        <text x="450" y="400" textAnchor="middle" className="text-xs fill-current stroke-none font-black opacity-40 tracking-widest">
+                          EXCISE ARCADE SCREEN
+                        </text>
+                      </g>
+
+                      {/* Bottom Control Deck Shelf */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Joystick & Buttons Deck", "Folds forward to hold your device and display vintage arcade controls.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <rect x="280" y="600" width="340" height="120" rx="4" />
+                        {/* Joystick */}
+                        <circle cx="360" cy="650" r="14" className="fill-current" />
+                        <line x1="360" y1="650" x2="360" y2="675" strokeWidth="3" />
+                        {/* Action Buttons */}
+                        <circle cx="480" cy="645" r="10" />
+                        <circle cx="520" cy="645" r="10" />
+                        <circle cx="560" cy="645" r="10" />
+                        <circle cx="500" cy="675" r="10" />
+                        <circle cx="540" cy="675" r="10" />
+                        <text x="450" y="705" textAnchor="middle" className="text-[8px] fill-current stroke-none font-bold">
+                          CONTROL DECK & PHONE CRADLE
+                        </text>
+                      </g>
+
+                      {/* Left Arcade Side Wing */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Left Arcade Cabinet Wing", "Angled side wing with pixel art illustrations. Folds back 90°.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <path d="M 280 120 L 160 160 L 140 680 L 280 720 Z" />
+                        <text x="210" y="420" textAnchor="middle" transform="rotate(-90 210 420)" className="text-[9px] fill-current stroke-none font-bold opacity-60">
+                          LEFT SIDE ARTWORK WING
+                        </text>
+                      </g>
+
+                      {/* Right Arcade Side Wing */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Right Arcade Cabinet Wing", "Angled side wing with pixel art illustrations. Folds back 90°.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <path d="M 620 120 L 740 160 L 760 680 L 620 720 Z" />
+                        <text x="690" y="420" textAnchor="middle" transform="rotate(90 690 420)" className="text-[9px] fill-current stroke-none font-bold opacity-60">
+                          RIGHT SIDE ARTWORK WING
+                        </text>
+                      </g>
+                    </g>
+                  </svg>
+                )}
+
+                {/* ================= MODEL 4: ZERO-GLUE INTERLOCKING ORIGAMI STAND ================= */}
+                {selectedModel === 'flat-fold' && (
+                  <svg viewBox="0 0 900 900" className="w-full max-h-[92%] h-auto stroke-current fill-none transition-all duration-300 font-mono" strokeWidth="1.5">
+                    <g className="print:text-black">
+                      <text x="450" y="45" textAnchor="middle" className="text-xl font-black fill-current stroke-none tracking-widest uppercase">ZERO-GLUE INTERLOCKING ORIGAMI STAND</text>
+                      <text x="450" y="68" textAnchor="middle" className="text-xs font-mono fill-current stroke-none tracking-wider opacity-70">
+                        — 100% Adhesive-Free • Slit-and-Tab Interlocking • Dual 60°/45° Angle —
+                      </text>
+
+                      {/* 50mm Calibration Scale Bar */}
+                      <g className="fill-current stroke-none font-mono text-[9px]">
+                        <rect x="50" y="820" width="140" height="4" fill="currentColor" />
+                        <line x1="50" y1="812" x2="50" y2="832" stroke="currentColor" strokeWidth="2" />
+                        <line x1="120" y1="816" x2="120" y2="828" stroke="currentColor" strokeWidth="1" />
+                        <line x1="190" y1="812" x2="190" y2="832" stroke="currentColor" strokeWidth="2" />
+                        <text x="50" y="805" textAnchor="start" className="font-bold">0mm</text>
+                        <text x="120" y="805" textAnchor="middle">25mm</text>
+                        <text x="190" y="805" textAnchor="end" className="font-bold">50mm SCALE</text>
+                      </g>
+
+                      {/* Dashed Score Creases */}
+                      <g strokeDasharray="6,6" strokeWidth="1.5" className="opacity-80">
+                        <line x1="260" y1="280" x2="640" y2="280" />
+                        <line x1="260" y1="520" x2="640" y2="520" />
+                        <line x1="260" y1="620" x2="640" y2="620" />
+                      </g>
+
+                      {/* Slits (Thick Solid Red Cut Lines) */}
+                      <line x1="320" y1="360" x2="400" y2="360" stroke="#ef4444" strokeWidth="3" />
+                      <line x1="500" y1="360" x2="580" y2="360" stroke="#ef4444" strokeWidth="3" />
+                      <text x="360" y="350" textAnchor="middle" className="text-[8px] fill-red-500 stroke-none font-bold">SLIT A (CUT)</text>
+                      <text x="540" y="350" textAnchor="middle" className="text-[8px] fill-red-500 stroke-none font-bold">SLIT B (CUT)</text>
+
+                      {/* Top Backrest Panel */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Backrest Rest Plate", "Main supportive backplate where the phone rests against.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <rect x="260" y="120" width="380" height="160" rx="12" />
+                        <text x="450" y="180" textAnchor="middle" className="text-xs font-black fill-current stroke-none uppercase">UPPER PHONE BACKREST</text>
+                        <text x="450" y="205" textAnchor="middle" className="text-[9px] font-mono fill-current stroke-none opacity-60">FITS ANY DEVICE OR CASE</text>
+                      </g>
+
+                      {/* Center Slotted Anchor Plate */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Interlocking Slit Panel", "Contains Slits A & B which lock the rear kickstand tabs securely without glue.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <rect x="260" y="280" width="380" height="240" />
+                        <text x="450" y="440" textAnchor="middle" className="text-xs font-black fill-current stroke-none uppercase">INTERLOCKING MAIN HUB</text>
+                        <text x="450" y="465" textAnchor="middle" className="text-[8px] font-mono fill-current stroke-none opacity-60">SNAP TABS 1 & 2 INTO SLITS A & B</text>
+                      </g>
+
+                      {/* Fold-Forward Catch Tray */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Front Catch Shelf", "Folds forward to prevent the device from sliding forward.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <rect x="260" y="520" width="380" height="100" />
+                        <text x="450" y="575" textAnchor="middle" className="text-[10px] font-black fill-current stroke-none uppercase">FRONT CATCH SHELF (FOLD UP)</text>
+                      </g>
+
+                      {/* Rear Tri-Fold Kickstand with Interlocking Tabs */}
+                      <g 
+                        className="transition-colors hover:fill-current/5 cursor-pointer"
+                        onMouseEnter={() => handlePartHover("Interlocking Spine Tabs", "Fold backward and insert into Slits A & B to form the rock-solid triangular base.")}
+                        onMouseLeave={handlePartLeave}
+                      >
+                        <path d="M 260 620 L 260 780 L 330 780 L 330 840 L 390 840 L 390 780 L 510 780 L 510 840 L 570 840 L 570 780 L 640 780 L 640 620 Z" />
+                        <text x="360" y="820" textAnchor="middle" className="text-[8px] fill-current stroke-none font-bold">TAB 1</text>
+                        <text x="540" y="820" textAnchor="middle" className="text-[8px] fill-current stroke-none font-bold">TAB 2</text>
+                        <text x="450" y="700" textAnchor="middle" className="text-[10px] font-black fill-current stroke-none">
+                          REAR TRIANGULAR SPINE (NO GLUE NEEDED)
+                        </text>
+                      </g>
+                    </g>
+                  </svg>
+                )}
+
+                {/* ================= MODEL 5: PARAMETRIC MILLIMETER CUSTOMIZER ================= */}
+                {selectedModel === 'parametric' && (() => {
+                  const svgW = Math.min(300, Math.max(160, phoneWidth * 2.8));
+                  const svgH = Math.min(520, Math.max(280, phoneHeight * 2.8));
+                  const svgT = Math.min(55, Math.max(20, phoneThickness * 3.2));
+                  const svgB = Math.min(24, Math.max(6, bezelPadding * 2.2));
+
+                  const frontX = 450 - svgW / 2;
+                  const frontY = 460 - svgH / 2;
+                  const leftSpineX = frontX - svgT;
+                  const backX = leftSpineX - svgW;
+                  const rightSpineX = frontX + svgW;
+                  const glueFlapX = rightSpineX + svgT;
+                  const glueFlapW = 40;
+
+                  return (
+                    <svg viewBox="0 0 900 900" className="w-full max-h-[92%] h-auto stroke-current fill-none transition-all duration-300 font-mono" strokeWidth="1.5">
+                      <g className="print:text-black">
+                        <text x="450" y="45" textAnchor="middle" className="text-xl font-black fill-current stroke-none tracking-widest uppercase">PARAMETRIC FORM-FIT HOUSING</text>
+                        <text x="450" y="68" textAnchor="middle" className="text-xs font-mono fill-current stroke-none tracking-wider opacity-70">
+                          — {phoneWidth.toFixed(1)}mm W x {phoneHeight.toFixed(1)}mm H x {phoneThickness.toFixed(1)}mm T (Bezel: {bezelPadding.toFixed(1)}mm) —
+                        </text>
+
+                        {/* 50mm Calibration Scale Bar */}
+                        <g className="fill-current stroke-none font-mono text-[9px]">
+                          <rect x="50" y="820" width="140" height="4" fill="currentColor" />
+                          <line x1="50" y1="812" x2="50" y2="832" stroke="currentColor" strokeWidth="2" />
+                          <line x1="120" y1="816" x2="120" y2="828" stroke="currentColor" strokeWidth="1" />
+                          <line x1="190" y1="812" x2="190" y2="832" stroke="currentColor" strokeWidth="2" />
+                          <text x="50" y="805" textAnchor="start" className="font-bold">0mm</text>
+                          <text x="120" y="805" textAnchor="middle">25mm</text>
+                          <text x="190" y="805" textAnchor="end" className="font-bold">50mm REFERENCE</text>
+                        </g>
+
+                        {/* Dashed Folds */}
+                        <g strokeDasharray="6,6" strokeWidth="1.5" className="opacity-80">
+                          <line x1={leftSpineX} y1={frontY} x2={leftSpineX} y2={frontY + svgH} />
+                          <line x1={frontX} y1={frontY} x2={frontX} y2={frontY + svgH} />
+                          <line x1={rightSpineX} y1={frontY} x2={rightSpineX} y2={frontY + svgH} />
+                          <line x1={glueFlapX} y1={frontY} x2={glueFlapX} y2={frontY + svgH} />
+                          <line x1={frontX} y1={frontY} x2={rightSpineX} y2={frontY} />
+                          <line x1={frontX} y1={frontY + svgH} x2={rightSpineX} y2={frontY + svgH} />
+                        </g>
+
+                        {/* Back Plate */}
+                        <g 
+                          className="transition-colors hover:fill-current/5 cursor-pointer"
+                          onMouseEnter={() => handlePartHover("Custom Back Plate", `Rear plate matching ${phoneWidth.toFixed(1)}mm width.`)}
+                          onMouseLeave={handlePartLeave}
+                        >
+                          <rect x={backX} y={frontY} width={svgW} height={svgH} rx="4" />
+                          <path d={`M ${backX} ${frontY} L ${backX - 35} ${frontY + 20} L ${backX - 35} ${frontY + svgH - 20} L ${backX} ${frontY + svgH} Z`} />
+                          <text x={backX + svgW / 2} y={frontY + svgH / 2} textAnchor="middle" className="text-xs fill-current stroke-none font-bold opacity-60">BACK PANEL</text>
+                        </g>
+
+                        {/* Left Spine */}
+                        <rect x={leftSpineX} y={frontY} width={svgT} height={svgH} />
+                        <text x={leftSpineX + svgT / 2} y={frontY + svgH / 2} textAnchor="middle" transform={`rotate(-90 ${leftSpineX + svgT / 2} ${frontY + svgH / 2})`} className="text-[8px] fill-current stroke-none font-bold opacity-60">
+                          LEFT SPINE ({phoneThickness.toFixed(1)}mm)
+                        </text>
+
+                        {/* Front Display Plate */}
+                        <g 
+                          className="transition-colors hover:fill-current/5 cursor-pointer"
+                          onMouseEnter={() => handlePartHover("Front Viewport Shield", `Front panel with ${bezelPadding.toFixed(1)}mm calculated bezel clearance.`)}
+                          onMouseLeave={handlePartLeave}
+                        >
+                          <rect x={frontX} y={frontY} width={svgW} height={svgH} rx="4" />
+                          
+                          {/* Cutout Display Window */}
+                          <rect 
+                            x={frontX + svgB} 
+                            y={frontY + svgB + 10} 
+                            width={svgW - svgB * 2} 
+                            height={svgH - svgB * 2 - 20} 
+                            rx="12" 
+                            className="stroke-[2.5] hover:stroke-red-400 hover:fill-red-500/10 transition-all"
+                          />
+                          <text x={frontX + svgW / 2} y={frontY + svgH / 2} textAnchor="middle" className="text-xs fill-current stroke-none font-black opacity-30 tracking-widest">
+                            EXCISE SCREEN WINDOW
+                          </text>
+
+                          {/* Apertures */}
+                          {notchType === 'pill' && (
+                            <g>
+                              <rect x={frontX + svgW / 2 - 30} y={frontY + svgB} width="60" height="14" rx="7" className="stroke-[2] hover:fill-red-500/20" />
+                              <text x={frontX + svgW / 2} y={frontY + svgB - 4} textAnchor="middle" className="text-[7px] fill-red-500 stroke-none font-bold">DYNAMIC ISLAND</text>
+                            </g>
+                          )}
+                          {notchType === 'punchhole' && (
+                            <g>
+                              <circle cx={frontX + svgW / 2} cy={frontY + svgB + 6} r="6" className="stroke-[2] hover:fill-red-500/20" />
+                              <text x={frontX + svgW / 2} y={frontY + svgB - 4} textAnchor="middle" className="text-[7px] fill-red-500 stroke-none font-bold">CAM HOLE</text>
+                            </g>
+                          )}
+                          {notchType === 'notch' && (
+                            <g>
+                              <path d={`M ${frontX + svgW / 2 - 25} ${frontY} L ${frontX + svgW / 2 - 20} ${frontY + 16} L ${frontX + svgW / 2 + 20} ${frontY + 16} L ${frontX + svgW / 2 + 25} ${frontY} Z`} className="stroke-[2] hover:fill-red-500/20" />
+                              <text x={frontX + svgW / 2} y={frontY - 4} textAnchor="middle" className="text-[7px] fill-red-500 stroke-none font-bold">NOTCH</text>
+                            </g>
+                          )}
+                        </g>
+
+                        {/* Right Spine */}
+                        <rect x={rightSpineX} y={frontY} width={svgT} height={svgH} />
+                        <text x={rightSpineX + svgT / 2} y={frontY + svgH / 2} textAnchor="middle" transform={`rotate(90 ${rightSpineX + svgT / 2} ${frontY + svgH / 2})`} className="text-[8px] fill-current stroke-none font-bold opacity-60">
+                          RIGHT SPINE ({phoneThickness.toFixed(1)}mm)
+                        </text>
+
+                        {/* Glue Flap */}
+                        <g 
+                          className="transition-colors hover:fill-current/10 cursor-pointer"
+                          onMouseEnter={() => handlePartHover("Parametric Glue Tab", "Apply adhesive and wrap behind back plate.")}
+                          onMouseLeave={handlePartLeave}
+                        >
+                          <path d={`M ${glueFlapX} ${frontY} L ${glueFlapX + glueFlapW} ${frontY + 20} L ${glueFlapX + glueFlapW} ${frontY + svgH - 20} L ${glueFlapX} ${frontY + svgH} Z`} />
+                          <text x={glueFlapX + 18} y={frontY + svgH / 2} textAnchor="middle" transform={`rotate(90 ${glueFlapX + 18} ${frontY + svgH / 2})`} className="text-[7px] fill-current stroke-none font-bold opacity-60">
+                            GLUE FLAP
+                          </text>
+                        </g>
+
+                        {/* Bottom USB Port Dock */}
+                        <g 
+                          className="transition-colors hover:fill-current/5 cursor-pointer"
+                          onMouseEnter={() => handlePartHover("Bottom Dock Plate", "Folds under to catch phone and route charging cable.")}
+                          onMouseLeave={handlePartLeave}
+                        >
+                          <path d={`M ${frontX} ${frontY + svgH} L ${frontX} ${frontY + svgH + svgT + 20} L ${rightSpineX} ${frontY + svgH + svgT + 20} L ${rightSpineX} ${frontY + svgH} Z`} />
+                          <rect x={frontX + svgW / 2 - 25} y={frontY + svgH + 10} width="50" height="14" rx="5" />
+                          <text x={frontX + svgW / 2} y={frontY + svgH + svgT + 12} textAnchor="middle" className="text-[7px] fill-current stroke-none font-bold opacity-70">
+                            USB-C / LIGHTNING PORT
+                          </text>
+                        </g>
+
+                        {/* Top Retention Flap */}
+                        <g 
+                          className="transition-colors hover:fill-current/5 cursor-pointer"
+                          onMouseEnter={() => handlePartHover("Top Dust Cover", "Folds over top of phone to hold it securely inside the sleeve.")}
+                          onMouseLeave={handlePartLeave}
+                        >
+                          <path d={`M ${frontX} ${frontY} L ${frontX} ${frontY - svgT - 20} L ${rightSpineX} ${frontY - svgT - 20} L ${rightSpineX} ${frontY} Z`} />
+                          <text x={frontX + svgW / 2} y={frontY - 10} textAnchor="middle" className="text-[7px] fill-current stroke-none font-bold opacity-70">
+                            TOP RETENTION FLAP
+                          </text>
+                        </g>
+                      </g>
+                    </svg>
+                  );
+                })()}
+
               </div>
             </div>
-            
-            {/* Legend indicators */}
-            <div className="hidden md:flex items-center space-x-6 text-[10px] font-mono text-zinc-500 uppercase tracking-wider pl-4 shrink-0">
-              <div className="flex items-center space-x-2">
-                <span className="w-5 h-0.5 bg-zinc-400 block" />
-                <span>Cut lines</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="w-5 h-0.5 border-t border-dashed border-zinc-500 block" />
-                <span>Fold lines</span>
-              </div>
-            </div>
-          </div>
+          )}
 
         </div>
-
       </div>
 
-      {/* CUSTOM CSS FOR PRINT HANDLING */}
-      <style dangerouslySetInnerHTML={{__html: `
-        @media print {
-          /* Hide standard screen workspace */
-          body * {
-            visibility: hidden;
-            background: transparent !important;
-          }
-          /* Only target the Blueprint SVG canvas */
-          .print\\:w-full, .print\\:w-full * {
-            visibility: visible;
-          }
-          .print\\:w-full {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100% !important;
-            height: 100% !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
-          }
-          svg {
-            width: 95% !important;
-            max-width: 100% !important;
-            height: auto !important;
-            stroke: #000000 !important;
-            color: #000000 !important;
-            fill: none !important;
-          }
-          text {
-            fill: #000000 !important;
-            stroke: none !important;
-          }
-          /* Ensure color guide line is black/red on print */
-          line[stroke="red"] {
-            stroke: #ff0000 !important;
-            stroke-width: 2.5px !important;
-          }
-        }
-      `}} />
     </div>
   );
 }
